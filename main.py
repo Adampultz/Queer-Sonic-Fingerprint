@@ -1,54 +1,78 @@
-from typing import List, Any
-
 import numpy
-
 import Classes
-import Defs
-import Defs as defs
+import qsf_evolutionaryOperators as evoOp
 import numpy as np
-import matplotlib.pyplot as plt
-import colorednoise as cn
-import scipy.io.wavfile
 from numpy.random import default_rng
 from datetime import datetime
-import scipy.io.wavfile
 import os
 import librosa
+import scipy
 from pythonosc import udp_client
+from subprocess import call
+from pynput import keyboard
+import Plotting as qsfPlot
+import asyncio
 
-folder = '/March_6th/' # Name of folder for audio files
+action = 0
+
+populationLimit = 50
+
+# print(defs.keyPress(keyboard))
+
+# defs.on_release(key)
+
+def keyPress(key):
+    if key == key.space:
+        print('trigger')
+
+    # def on_release(key):
+    #     print('{0} released'.format(
+    #         key))
+    #     if key == keyboard.Key.esc:
+    #         return 0
+
+listener = keyboard.Listener(on_press=keyPress)
+    # listener = keyboard.Listener(on_press=keyPress, on_release=on_release)
+listener.start()
+
+folder = '/March_6th/'  # Name of folder for audio files
 sendOsc = False  # Send OSC messages to SuperCollider (TRUE/FALSE)
-writeFiles = False # Write audio files (TRUE/FALSE)
+writeFiles = False  # Write audio files (TRUE/FALSE)
+visulise = True  # Write audio files (TRUE/FALSE)
 
 sampleRate = 48000
 
+nyquist = sampleRate / 2
+
 hiPassFreq = 20
 
+genID = 0
+
 carrAudioLengthSec = 10
-carrAudioLengthSamp = 10 * sampleRate
+carrAudioLengthSamp = carrAudioLengthSec * sampleRate
 
-freqCoeff = carrAudioLengthSamp / sampleRate
+freqCoef = carrAudioLengthSamp / sampleRate
 
-brickWallHiPass = int(hiPassFreq * freqCoeff)
+brickWallHiPass = hiPassFreq
 
-client = udp_client.SimpleUDPClient("127.0.0.1", 57120) # For OSC communication
+client = udp_client.SimpleUDPClient("127.0.0.1", 57120)  # For OSC communication
 
-beta = 1
+# beta = 1
 
 rng = default_rng()
 
-now = datetime.now() # date and time
-dt_string = now.strftime("%d_%m_%Y_%H_%M_%S") # Date and time as string
-dir_path = os.path.dirname(os.path.realpath(__file__)) # Path of project (corresponds to where main.py is located)
+now = datetime.now()  # date and time
+date_string = now.strftime("%d_%m_%Y")
+dt_string = now.strftime("%d_%m_%Y_%H_%M_%S")  # Date and time as string
+dir_path = os.path.dirname(os.path.realpath(__file__))  # Path of project (corresponds to where main.py is located)
 
 # Paths
 
-impulse_output_File_Name = dir_path + folder + dt_string + '_sineKanteen_' + '.wav' # Path of sine wave recording
-# object_output_File_Name = dir_path + folder + dt_string + '_kanteen_' + '.wav' # Not in use?
-room_output_File_Name = dir_path + folder + dt_string +  '_kanteenImpulseResponse_' + '.wav'
+impulse_output_File_Name = dir_path + folder + dt_string + '_sineKanteen_' + '.wav'  # Path of sine wave recording
+object_output_File_Name = dir_path + folder + dt_string + '_kanteen_' + '.wav'  # Not in use?
+room_output_File_Name = dir_path + folder + dt_string + '_kanteenImpulseResponse_' + '.wav'
 convolution_output_File_Name = dir_path + folder + dt_string + '_kanteenConvolution_ ' + '.wav'
 object_audio = dir_path + '/TestAudio/kanteenObject_test.wav'
-# carrier_path = dir_path + '/TestAudio/StreetRec_short.wav'
 carrier_path = dir_path + '/TestAudio/HofDripMono.wav'
 eleStreetNoiseCovolve_audio = dir_path + '/TestAudio/eleStreetNoiseCovolve_audio.wav'
 kanteenStreetNoiseCovolve_audio = dir_path + '/TestAudio/kanteenStreetNoiseCovolve_audio.wav'
@@ -57,19 +81,16 @@ kanteenEle_audio = dir_path + folder + dt_string + '_kanteenEle_ ' + '.wav'
 eleKanteenStreetConvolve_audio = dir_path + folder + dt_string + '_elekanteenStreetConcvolve_ ' + '.wav'
 kanteenEleStreetConvolve_audio = dir_path + folder + dt_string + '_kanteenEleStreetConvolve_ ' + '.wav'
 impulse_path = dir_path + '/TestAudio/sineTest.wav'
-obj_path = dir_path + '/Object_Audio/'
+obj_path = dir_path + '/Object_Audio_NoiseRedux/'
 
-numObjects = 0
+ImpulseResponses = Classes.qsf_ImpulseResponses(obj_path)
+numObjects = ImpulseResponses.numbObjects()
 
-for subdir, dirs, files in os.walk(obj_path):
-    for file in files:
-        numObjects += 1
-
-impulse_data, rate = librosa.load(impulse_path, sr = sampleRate)
+impulse_data, rate = librosa.load(impulse_path, sr=sampleRate)
 impulse_data = np.asarray(impulse_data, dtype=np.float64)
-impulse_Length = len(impulse_data)
+impulse_size = len(impulse_data)
 
-impulse_fftClass = Classes.qsfFFT(impulse_path, sampleRate, impulse_Length, carrAudioLengthSamp)
+impulse_fftClass = Classes.qsfFFT(impulse_path, sampleRate, impulse_size, carrAudioLengthSamp, freqCoef)
 impulse_rfft = impulse_fftClass.rfft(0)
 impulse_fft_Plot = impulse_fftClass.fftPlotNorm()
 impulse_rfftSize = impulse_fftClass.size_rfft()
@@ -77,108 +98,73 @@ impulse_rfftSize = impulse_fftClass.size_rfft()
 # Arrays
 
 obj_paths_array = []
-audio_obj_array = []
-obj_1_fft_Plot = []
+obj_fft_Plot = np.zeros((numObjects, impulse_rfftSize))
 obj_rfft = np.zeros((numObjects, impulse_rfftSize), dtype=np.complex128)
-obj_Response = []
-obj_ResponseClass = []
+newGen_CarrierConvo = np.zeros((numObjects, impulse_rfftSize), dtype=np.complex128)
+obj_irfft = np.zeros((numObjects, impulse_size))
+newGen_irfft = np.zeros((populationLimit, impulse_size))
+impulse_irfft = np.zeros((populationLimit, impulse_size))
+obj_carr_convo_irfft = np.zeros((numObjects, impulse_size))
+newGen_carr_convo_irfft = np.zeros((populationLimit, impulse_size))
+objectNames = np.ndarray((numObjects,), dtype=object)
 
-print(carrAudioLengthSamp)
-
-
+obj_FftClass = numpy.ndarray((numObjects,), dtype=object)
+axisArray = numpy.ndarray((4, 4), dtype=object)
+obj_Response = np.zeros((numObjects, impulse_rfftSize), dtype=np.complex128)
+obj_ResponseClass = numpy.ndarray((numObjects,), dtype=object)
 
 # Iterate over folder with audio recordings of object impulse responses
+
 for subdir, dirs, files in os.walk(obj_path):
     index = 0
     for file in files:
-        path = os.path.join(subdir, file) # local
+        if file == '.DS_Store':
+            print("Ignoring file '.DS_Store'")
+        else:
+            objFileName = ''
+            path = os.path.join(subdir, file)  # local
 
-        obj_paths_array.append(path) # local
+            for char in range(len(file)):
+                if file[char + 2] == '_':
+                    objectNames[index] = objFileName
+                    break
+                else:
+                    objFileName += file[char + 2]
 
-        obj_FftClass = Classes.qsfFFT(path, sampleRate, impulse_rfftSize, carrAudioLengthSamp) # local
-        obj_rfft[index] = obj_FftClass.rfft(brickWallHiPass)
+            obj_paths_array.append(path)  # local
 
-        # obj_Fft.append(filter) # Global
-        # Not used
-        # audio_obj, rate_obj = librosa.load(path, sr=sampleRate)
-        # audio_obj = np.asarray(audio_obj, dtype=np.float64)
-        # audio_obj_array.append(audio_obj)
+            obj_FftClass[index] = Classes.qsfFFT(path, sampleRate, impulse_rfftSize, carrAudioLengthSamp, freqCoef)
+            obj_rfft[index] = obj_FftClass[index].rfft(brickWallHiPass)
+            obj_fft_Plot[index] = obj_FftClass[index].fftPlotNorm()
 
-        response = Classes.qsfObjFreqR(obj_rfft[index], impulse_rfft) # Local
-        obj_ResponseClass.append(response)
-        obj_Response.append(response.response())
+            response = Classes.qsfObjFreqR(obj_rfft[index], impulse_rfft)  # Local
+            obj_ResponseClass[index] = response
+            obj_Response[index] = response.response()
 
-        index += 1
+            index += 1
 
 responseLength = len(obj_Response[0])
 
-print(obj_rfft[300:320])
-
-
-objChild = np.zeros((2,2, responseLength), dtype=np.complex128)
-sourceOBJ_convo = np.zeros((2, responseLength), dtype=np.complex128)
-newGen = np.zeros((2, responseLength), dtype=np.complex128)
-newGen_CarrierConvo = np.zeros((2, responseLength), dtype=np.complex128)
+objChild = np.zeros((numObjects, numObjects, responseLength), dtype=np.complex128)
+sourceOBJ_convo = np.zeros((numObjects, responseLength), dtype=np.complex128)
+newGen = np.zeros((numObjects, responseLength), dtype=np.complex128)
+newGenNoMutation = np.zeros((numObjects, responseLength), dtype=np.complex128)
 
 audioIndex = 0
 audioIndex_Object = 0
 
 # Source object convolution with carrier audio
 
+audio_carrier, carrier_sRate = librosa.load(carrier_path, sr=sampleRate)
+audio_carrier = np.asarray(audio_carrier, dtype=np.float64)
 
-
-
-
-# sine_data, rate = librosa.load(sine_audio, sr = sampleRate)
-# sine_data = np.asarray(sine_data, dtype=np.float64)
-#
-# sineFftClass = Classes.qsfFFT(sine_audio, sampleRate, fftLength, carrAudioLengthSamp)
-# sineFft = sineFftClass.rfft(0)
-# sine_fft_Plot = sineFftClass.fftPlotNorm()
-
-# for i in range(numObjects):
-#     audio_obj, rate_obj = librosa.load(obj_paths_array[i], sr = sampleRate)
-#     audio_obj = np.asarray(audio_obj, dtype = np.float64)
-#     audio_obj_array.append(audio_obj)
-#
-#     obj_Response.append(Classes.qsfObjFreqR(obj_Fft[i], sineFft))
-    # kanteenResponse = Classes.qsfObjFreqR(obj_Fft[0], sineFft)
-
-    # obj_1_fft_Plot = obj_1_FftClass.fftPlotNorm()
-
-
-
-# audio_obj_0, rate_obj_0 = librosa.load(obj_paths_array[0], sr = sampleRate)
-# audio_obj_0 = np.asarray(audio_obj_0, dtype = np.float64)
-# audio_obj_1, rate_obj_1 = librosa.load(obj_paths_array[1], sr = sampleRate)
-# audio_obj_1 = np.asarray(audio_obj_1, dtype = np.float64)
-
-audio_street, streetsRate = librosa.load(carrier_path, sr = sampleRate)
-audio_street = np.asarray(audio_street, dtype = np.float64)
-
-impulse_WinSize = len(impulse_data)
-# objectWinSize = len(aud_data_Object)
-
-audio_street = audio_street[0:impulse_WinSize]
-
-slicePoint = int(1000 * freqCoeff)
-
-ii = np.arange(0, impulse_WinSize)
-t = ii / sampleRate
+audio_carrier = audio_carrier[0:impulse_size]
 
 len_data = len(impulse_path)
 
-fftLength = 168000
+# fftLength = 168000
 
-# obj_1_FftClass = Classes.qsfFFT(obj_paths_array[1], sampleRate, fftLength, carrAudioLengthSamp)
-# obj_1_Fft = obj_1_FftClass.rfft(brickWallHiPass)
-# obj_1_fft_Plot = obj_1_FftClass.fftPlotNorm()
-
-# obj_0_FftClass = Classes.qsfFFT(obj_paths_array[0], sampleRate, fftLength, carrAudioLengthSamp)
-# obj_0_Fft = obj_0_FftClass.rfft(brickWallHiPass)
-# obj_0_fft_Plot = obj_0_FftClass.fftPlotNorm()
-
-carrier_FftClass = Classes.qsfFFT(carrier_path, sampleRate, carrAudioLengthSamp, carrAudioLengthSamp)
+carrier_FftClass = Classes.qsfFFT(carrier_path, sampleRate, carrAudioLengthSamp, carrAudioLengthSamp, freqCoef)
 carrier_Fft = carrier_FftClass.rfft(brickWallHiPass)
 carrier_fft_Plot = carrier_FftClass.fftPlotNorm()
 
@@ -187,351 +173,149 @@ for i in range(numObjects):
 
 # Genetic Operators
 
-for i in range(numObjects):
-    child_1 = obj_Response[i][0:slicePoint].copy()
-    child_2 = obj_Response[(i + 1) % 2][(slicePoint):len(obj_rfft[1])].copy()
-    newGen[i] = np.concatenate((child_1, child_2))
+evoClass = evoOp.NewGeneration(obj_Response, numObjects, impulse_rfftSize, carrier_Fft, freqCoef, populationLimit)
+
+newGen = evoClass.newGen()
+
+newGenNoMutation = evoClass.newGenNoMutation()
+
+newGen_CarrierConvo = evoClass.convolve()
+
+print("Generation 0")
+
+# IRFFT. The inverse fourier transform
+
+carrier_irfft = np.fft.irfft(carrier_Fft)
+carrier_irfft = np.real(carrier_irfft)
 
 for i in range(numObjects):
-    newGen_CarrierConvo[i] = (newGen[i] * carrier_Fft)
-# eleKanteenConcatStreetConvolve = eleKanteenConcat * carrier_Fft
-# kanteenEleConcatStreetConvolve = kanteenEleConcat * carrier_Fft
+    obj_irfft[i] = np.fft.irfft(obj_rfft[i])[0:impulse_size]
+    obj_irfft[i] = np.real(obj_irfft[i])
+    obj_carr_convo_irfft[i] = np.fft.irfft(sourceOBJ_convo[i])[0:impulse_size]
+    obj_carr_convo_irfft[i] = np.real(obj_carr_convo_irfft[i])
+    impulse_irfft[i] = np.fft.irfft(obj_Response[i])[0:impulse_size]
+    impulse_irfft[i] = np.real(impulse_irfft[i])
+
+for i in range(numObjects**2 - numObjects):
+    newGen_irfft[i] = np.fft.irfft(newGen[i])[0:impulse_size]
+    newGen_irfft[i] = np.real(newGen_irfft[i])
+    newGen_carr_convo_irfft[i] = np.fft.irfft(newGen_CarrierConvo[i])[0:impulse_size]
+    newGen_carr_convo_irfft[i] = np.real(newGen_carr_convo_irfft[i])
+
+# Data visualization
+
+if visulise == True:
+
+    numPlotsPerPage = 6
+    numPlots = int((numObjects ** 2 - numObjects) / numPlotsPerPage)
+    firstPlot = 0
+    lastPlot = numPlotsPerPage - 1
+
+    newGenPlot = np.ndarray((numPlots,), dtype=object)
+
+    gen0Plot = qsfPlot.Qsfplot(sampleRate, numObjects, impulse_rfftSize, impulse_size)
+
+    gen0Plot.plotFirstGen(evoClass.getSlice(), objectNames, obj_FftClass)
+
+    for i in range(numPlots):
+        newGenPlot[i] = qsfPlot.Qsfplot(sampleRate, numPlotsPerPage, impulse_rfftSize, impulse_size)
+        newGenPlot[i].plotNewGen(evoClass.getSlice(), objectNames, newGen[firstPlot:lastPlot], newGen_irfft[firstPlot:lastPlot], newGen_carr_convo_irfft[firstPlot:lastPlot], firstPlot, lastPlot)
+        # qsfPlot.plotNewGen(evoClass.getSlice(), sampleRate, objectNames, newGen[firstPlot:lastPlot], newGen_irfft[firstPlot:lastPlot], newGen_carr_convo_irfft[firstPlot:lastPlot], firstPlot, lastPlot)
+        firstPlot += numPlotsPerPage
+        lastPlot += numPlotsPerPage
+
+    for i in range(numPlots):
+        newGenPlot[i].showPlot()
+
+    gen0Plot.showPlot()
+
+async def work():
+    genIndex = 1
+    while True:
+        await asyncio.sleep(5)
+
+        newGen = evoClass.nextGen()
+
+        newGenNoMutation = evoClass.newGenNoMutation()
+
+        newGen_CarrierConvo = evoClass.convolve()
+
+        print("Generation " + str(genIndex))
+        genIndex += 1
+
+        if visulise == True:
+
+            numPlotsPerPage = 6
+            numPlots = int((numObjects ** 2 - numObjects) / numPlotsPerPage)
+            firstPlot = 0
+            lastPlot = numPlotsPerPage - 1
+
+            newGenPlot = np.ndarray((numPlots,), dtype=object)
+
+            for i in range(numPlots):
+                newGenPlot[i] = qsfPlot.Qsfplot(sampleRate, numPlotsPerPage, impulse_rfftSize, impulse_size)
+                newGenPlot[i].plotNewGen(evoClass.getSlice(), objectNames, newGen[firstPlot:lastPlot],
+                                         newGen_irfft[firstPlot:lastPlot], newGen_carr_convo_irfft[firstPlot:lastPlot],
+                                         firstPlot, lastPlot)
+                # qsfPlot.plotNewGen(evoClass.getSlice(), sampleRate, objectNames, newGen[firstPlot:lastPlot], newGen_irfft[firstPlot:lastPlot], newGen_carr_convo_irfft[firstPlot:lastPlot], firstPlot, lastPlot)
+                firstPlot += numPlotsPerPage
+                lastPlot += numPlotsPerPage
+
+            for i in range(numPlots):
+                newGenPlot[i].showPlot()
+
+            gen0Plot.showPlot()
 
 
-sine_ifft = np.fft.irfft(impulse_rfft)
-sine_ifft = sine_ifft[0:impulse_WinSize]
-sine_ifft = np.real(sine_ifft)
+# Create a folder for storing audio renders, identified by date
+renderID_folder = ''
+objectConvolveFolder = ''
 
-obj_1_ifft = np.fft.irfft(obj_rfft[1])
-obj_1_ifft = obj_1_ifft[0:impulse_WinSize]
-obj_1_ifft = np.real(obj_1_ifft)
-elephResponse_ifft = np.fft.irfft(obj_Response[1])
-elephResponse_ifft = elephResponse_ifft[0:impulse_WinSize]
-elephResponse_ifft = np.real(elephResponse_ifft)
-obj_0_ifft = np.fft.irfft(obj_rfft[0])
-obj_0_ifft = obj_0_ifft[0:impulse_WinSize]
-obj_0_ifft = np.real(obj_0_ifft)
-kanteenResponse_ifft = np.fft.irfft(obj_Response[0])
-kanteenResponse_ifft = kanteenResponse_ifft[0:impulse_WinSize]
-kanteenResponse_ifft = np.real(kanteenResponse_ifft)
-elekanteenResponse_ifft = np.fft.irfft(newGen[1])
-elekanteenResponse_ifft = elekanteenResponse_ifft[0:impulse_WinSize]
-elekanteenResponse_ifft = np.real(elekanteenResponse_ifft)
-kanteenEleResponse_ifft = np.fft.irfft(newGen[0])
-kanteenEleResponse_ifft = kanteenEleResponse_ifft[0:impulse_WinSize]
-kanteenEleResponse_ifft = np.real(kanteenEleResponse_ifft)
-streeNoise_ifft = np.fft.irfft(carrier_Fft)
-streeNoise_ifft = np.real(streeNoise_ifft)
-elphStreetConvolveIrfft = np.fft.irfft(sourceOBJ_convo[1])
-kanteenStreetConvolveIrfft = np.fft.irfft(sourceOBJ_convo[0])
-eleKanteenConcatStreetConvolveIrfft = np.fft.irfft(newGen_CarrierConvo[1])
-kanteenEleConcatStreetConvolveIrfft = np.fft.irfft(newGen_CarrierConvo[0])
+if (writeFiles == True):
+    renderFolder = dir_path + folder + date_string
+    renderID_folder = renderFolder + '/' + dt_string
+    objectConvolveFolder = renderFolder + '/' + 'Object_Carrier_Convolution/'
+    objectRawImpulseFolder = renderFolder + '/' + 'Object_Impulse/'
+    if not os.path.exists(renderFolder):
+        os.makedirs(renderFolder)
 
-w = np.linspace(0, sampleRate // 2, impulse_rfftSize)
+    if not os.path.exists(objectConvolveFolder):
+        os.makedirs(objectConvolveFolder)
 
-audioPltLn = np.linspace(0, impulse_WinSize // sampleRate, impulse_WinSize)
+    if not os.path.exists(objectConvolveFolder):
+        os.makedirs(objectConvolveFolder)
 
-carrierPltLn = np.linspace(0, carrAudioLengthSamp // sampleRate, carrAudioLengthSamp)
+    if not os.path.exists(objectRawImpulseFolder):
+        os.makedirs(objectRawImpulseFolder)
 
-# fig, axs = plt.subplots(3, 2, figsize = (20, 10))
-#
-# # axs[0].plot(audioPltLn, sineFftClass.audio())
-# # axs[0].set_ylabel('Amplitude')
-# # axs[0].title.set_text('Sine wave sweep (time domain)')
-# #
-# # axs[1].plot(audioPltLn, elephantFftClass.audio())
-# # axs[1].set_ylabel('Amplitude')
-# # axs[1].title.set_text('Elephant impulse response (time domain)')
-# #
-# # axs[2].plot(audioPltLn, kanteenFftClass.audio())
-# # axs[2].set_xlabel('Time in seconds')
-# # axs[2].set_ylabel('Amplitude')
-# # axs[2].title.set_text('Thermos impulse response (time domain)')
-#
-# axis_1 = axs[0, 0]
-# axis_1.plot(audioPltLn, sineFftClass.audio())
-# axis_1.set_ylabel('Amplitude')
-# axis_1.title.set_text('Sine wave sweep (time domain)')
-#
-# axis_1R = axs[0, 1]
-# axis_1R.plot(w, sine_fft_Plot)
-# axis_1R.title.set_text('Sine wave sweep (frequency domain)')
-#
-# axis_2 = axs[1, 0]
-# axis_2.plot(audioPltLn, elephantFftClass.audio())
-# axis_2.set_ylabel('Amplitude')
-# axis_2.title.set_text('Elephant impulse response (time domain)')
-#
-# axis_2R = axs[1, 1]
-# axis_2R.plot(w, elephant_fft_Plot)
-# axis_2R.title.set_text('Elephant frequency response (frequency domain)')
-#
-# axis_3 = axs[2, 0]
-# axis_3.plot(audioPltLn, kanteenFftClass.audio())
-# axis_3.set_ylabel('Amplitude')
-# axis_3.title.set_text('Thermos impulse response (time domain)')
-#
-# axis_3R = axs[2, 1]
-# axis_3R.plot(w, kanteen_fft_Plot)
-# axis_3R.title.set_text('Thermos frequency response (frequency domain)')
-# axis_3R.set_xlabel('Frequency in Hz')
-#
-# fig, axs = plt.subplots(2, 3, figsize = (20, 10))
-#
-# axis_1 = axs[0, 0]
-# line_1 = axis_1.plot(w, sine_fft_Plot, label='Sine Sweep')
-#
-# line_2 = axis_1.plot(w, elephant_fft_Plot, label='Elephant')
-# axis_1.legend()
-# axis_1.set_ylabel('Amplitude')
-# axis_1.title.set_text('Sine sweep and elephant (frequency domain)')
-#
-# axis_1_2 = axs[0, 1]
-# axis_1_2.plot(w, elphResponse.absNorm())
-# axis_1_2.title.set_text('Elephant sonic fingerprint (frequency domain)')
-#
-# axis_1_3 = axs[0, 2]
-# axis_1_3.plot(audioPltLn, elephResponse_ifft)
-# axis_1_3.title.set_text('Elephant sonic fingerprint (time domain)')
-#
-# axis_2 = axs[1, 0]
-# axis_2.set_ylabel('Amplitude')
-# line_1 = axis_2.plot(w, sine_fft_Plot, label='Sine Sweep')
-#
-# line_2 = axis_2.plot(w, kanteen_fft_Plot, label='Thermos')
-# axis_2.legend()
-# axis_2.title.set_text('Sine sweep and thermos (frequency domain)')
-# axis_2.set_xlabel('Frequency in Hz')
-#
-# axis_2_2 = axs[1, 1]
-# axis_2_2.plot(w, kanteenResponse.absNorm())
-# axis_2_2.title.set_text('Thermos sonic fingerprint (frequency domain)')
-# axis_2_2.set_xlabel('Frequency in Hz')
-#
-# axis_2_3 = axs[1, 2]
-# axis_2_3.plot(audioPltLn, librosa.util.normalize(kanteenResponse_ifft))
-# axis_2_3.title.set_text('Thermos sonic fingerprint (time domain)')
-# axis_2_3.set_xlabel('Time in seconds')
+    if genID == 0:
+        for i in range(numObjects):
+            objectConcolvePath = objectConvolveFolder + objectNames[i] + '.wav'
+            objectImpulsePath = objectRawImpulseFolder + objectNames[i] + 'impulse' + '.wav'
 
-#
-# axis_2R = axs[1, 1]
-# axis_2R.plot(w, elephant_fft_Plot)
-# axis_2R.title.set_text('Elephant frequency response (frequency domain)')
-#
-# axis_3 = axs[2, 0]
-# axis_3.plot(audioPltLn, kanteenFftClass.audio())
-# axis_3.set_ylabel('Amplitude')
-# axis_3.title.set_text('Thermos impulse response (time domain)')
-#
-# axis_3R = axs[2, 1]
-# axis_3R.plot(w, kanteen_fft_Plot)
-# axis_3R.title.set_text('Thermos frequency response (frequency domain)')
-# axis_3R.set_xlabel('Frequency in Hz')
+            if not os.path.exists(objectConcolvePath):
+                scipy.io.wavfile.write(objectConcolvePath, sampleRate, librosa.util.normalize(obj_carr_convo_irfft[i]))
 
-# axs[1].plot(audioPltLn, elephantFftClass.audio())
-# axs[1].set_ylabel('Amplitude')
-# axs[1].title.set_text('Elephant impulse response (time domain)')
-#
-# axs[2].plot(audioPltLn, kanteenFftClass.audio())
-# axs[2].set_xlabel('Time in seconds')
-# axs[2].set_ylabel('Amplitude')
-# axs[2].title.set_text('Thermos impulse response (time domain)')
+            if not os.path.exists(objectImpulsePath):
+                scipy.io.wavfile.write(objectImpulsePath, sampleRate, librosa.util.normalize(impulse_irfft[i]))
 
-# fig, axs = plt.subplots(5, 3, figsize = (20, 10))
-#
-# axs[0, 0].plot(audioPltLn, sineFftClass.audio())
-# axs[0, 1].plot(w, sine_fft_Plot)
-# axs[0, 2].plot(audioPltLn, sine_ifft)
-#
-# axs[1, 0].plot(audioPltLn, elephantFftClass.audio())
-# axs[1, 1].plot(w, elephant_fft_Plot)
-# axs[1, 2].plot(audioPltLn, eleph_ifft)
-#
-# axs[2, 0].plot(audioPltLn, kanteenFftClass.audio())
-# axs[2, 1].plot(w, kanteen_fft_Plot)
-# axs[2, 2].plot(audioPltLn, kanteen_ifft)
-#
-# axs[3, 0].plot(carrierPltLn, streetNoiseFftClass.audio())
-# axs[3, 1].plot(w, streetNoise_fft_Plot)
-# axs[3, 2].plot(carrierPltLn, streeNoise_ifft)
+    for i in range(numObjects):
+        newGenImpulsePath = renderID_folder + '/New Generation Impulse_' + dt_string + '_' + str(i) + '_' + str((i + 1) % numObjects) + '.wav'
+        newGenConvolutionPath = renderID_folder + '/New Generation Convolution_' + dt_string + '_' + str(i) + '_' + str((i + 1) % numObjects) + '.wav'
 
-# fig, axs = plt.subplots(2, 2, figsize = (20, 10))
-#
-# axis_1 = axs[0, 0]
-# axis_1.plot(carrierPltLn, streetNoiseFftClass.audio())
-# axis_1.title.set_text('Snow thawing (time domain)')
-# axis_1.set_ylabel('Amplitude')
-# axis_1.set_xlabel('Time in seconds')
-#
-# axis_1_2 = axs[0, 1]
-# axis_1_2.plot(w, streetNoiseFftClass.fftPlotNorm())
-# axis_1_2.title.set_text('Snow thawing (frequency domain)')
-# axis_1_2.set_xlabel('Frequency in Hz')
-#
-# axis_1_1 = axs[0, 0]
-# axis_1_1.plot(w, streetNoiseFftClass.fftPlotNorm(), label = 'Snow thawing')
-# axis_1_1.plot(w, elephant_fft_Plot, label = 'Elephant fingerprint')
-# axis_1_1.title.set_text('Snow thawing x elephant (frequency domain)')
-# axis_1_1.legend()
-#
-# axis_1_2 = axs[0, 1]
-# axis_1_2.plot(carrierPltLn, librosa.util.normalize(elphStreetConvolveIrfft), label = 'Audio with elephant fingerprint')
-# axis_1_2.plot(carrierPltLn, streetNoiseFftClass.audio(), label = 'Original audio')
-# axis_1_2.title.set_text('Snow thawing x elephant (time domain)')
-# axis_1_2.legend()
-#
-# axis_2_1 = axs[1, 0]
-# axis_2_1.plot(w, streetNoiseFftClass.fftPlotNorm(), label = 'Snow thawing')
-# axis_2_1.plot(w, kanteen_fft_Plot, label = 'Thermos fingerprint')
-# axis_2_1.title.set_text('Snow thawing x thermos (frequency domain)')
-# axis_2_1.set_xlabel('Frequency in Hz')
-# axis_2_1.legend()
-#
-# axis_2_2 = axs[1, 1]
-# axis_2_2.plot(carrierPltLn, librosa.util.normalize(kanteenStreetConvolveIrfft), label = 'Audio with thermos fingerprint')
-# axis_2_2.plot(carrierPltLn, streetNoiseFftClass.audio(), label = 'Original audio')
-# axis_2_2.title.set_text('Snow thawing x thermos (time domain)')
-# axis_2_2.set_xlabel('Time in seconds')
-# axis_2_2.legend()
-#
-# axis_2 = axs[1, 0]
-# axis_2.set_ylabel('Amplitude')
-# line_1 = axis_2.plot(w, sine_fft_Plot, label='Sine Sweep')
-#
-# line_2 = axis_2.plot(w, kanteen_fft_Plot, label='Thermos')
-# axis_2.legend()
-# axis_2.title.set_text('Sine sweep and thermos (frequency domain)')
-# axis_2.set_xlabel('Frequency in Hz')
-#
-# axis_2_2 = axs[1, 1]
-# axis_2_2.plot(w, kanteenResponse.absNorm())
-# axis_2_2.title.set_text('Thermos sonic fingerprint (frequency domain)')
-# axis_2_2.set_xlabel('Frequency in Hz')
-#
-# axis_2_3 = axs[1, 2]
-# axis_2_3.plot(audioPltLn, kanteen_ifft)
-# axis_2_3.title.set_text('Thermos sonic fingerprint (time domain)')
-# axis_2_3.set_xlabel('Time in seconds')
+        scipy.io.wavfile.write(newGenImpulsePath, sampleRate, librosa.util.normalize(newGen_irfft[i]))
+        scipy.io.wavfile.write(newGenConvolutionPath, sampleRate, librosa.util.normalize(newGen_carr_convo_irfft[i]))
 
-fig, axs = plt.subplots(2, 3, figsize = (20, 10))
+loop = asyncio.get_event_loop()
+try:
+    asyncio.ensure_future(work())
+    loop.run_forever()
+except KeyboardInterrupt:
+    pass
+finally:
+    print("Closing Loop")
+    call(["open", renderID_folder])
+    call(["open", objectConvolveFolder])
+    loop.close()
 
-axis_1_2 = axs[0, 0]
-axis_1_2.plot(w, obj_ResponseClass[1].absNorm())
-axis_1_2.vlines(x = 1500, ymin = 0, ymax = 0.5,
-           colors = 'red',
-           label = 'slice point')
-axis_1_2.title.set_text('Elephant sonic fingerprint (frequency domain)')
-axis_1_2.legend()
-
-axis_1_2 = axs[1, 0]
-axis_1_2.plot(w, obj_ResponseClass[0].absNorm())
-axis_1_2.vlines(x = 1500, ymin = 0, ymax = 0.5,
-           colors = 'red',
-           label = 'slice point')
-axis_1_2.title.set_text('Thermos sonic fingerprint (frequency domain)')
-axis_1_2.set_xlabel('Frequency in Hz')
-axis_1_2.legend()
-
-axis_1_2 = axs[0, 1]
-# axis_1_2.plot(w, librosa.util.normalize(abs(eleKanteenConcat)))
-axis_1_2.plot(w, librosa.util.normalize(np.concatenate((obj_ResponseClass[1].absNorm()[0:slicePoint], obj_ResponseClass[0].absNorm()[slicePoint:len(obj_rfft[0])]))))
-axis_1_2.title.set_text('Elephant / Thermos sonic fingerprint (frequency domain)')
-
-axis_1_2 = axs[1, 1]
-axis_1_2.plot(w, np.concatenate((obj_ResponseClass[0].absNorm()[0:slicePoint], obj_ResponseClass[1].absNorm()[slicePoint:len(obj_rfft[0])])))
-axis_1_2.title.set_text('Thermos / Elephant sonic fingerprint (frequency domain)')
-axis_1_2.set_xlabel('Frequency in Hz')
-
-axis_1_2 = axs[0, 2]
-axis_1_2.plot(audioPltLn, librosa.util.normalize(elekanteenResponse_ifft))
-axis_1_2.title.set_text('Elephant / Thermos sonic fingerprint (time domain)')
-
-axis_1_2 = axs[1, 2]
-axis_1_2.plot(audioPltLn, librosa.util.normalize(kanteenEleResponse_ifft))
-axis_1_2.title.set_text('Thermos / Elephant sonic fingerprint (time domain)')
-axis_1_2.set_xlabel('Time in seconds')
-
-# axs[1,0].plot(audioPltLn, channel_2)
-# axs[1, 1].plot(w, fourierObjectAbs)
-
-# fig, axs = plt.subplots(2, 2, figsize = (20, 10))
-#
-# axis_2_2 = axs[0, 0]
-# axis_2_2.plot(carrierPltLn, librosa.util.normalize(eleKanteenConcatStreetConvolveIrfft), label = 'Audio with elephant / thermos fingerprint')
-# axis_2_2.plot(carrierPltLn, streetNoiseFftClass.audio(), label = 'Original audio')
-# axis_2_2.title.set_text('Snow thawing x elephant / thermos (time domain)')
-# axis_2_2.set_xlabel('Time in seconds')
-# axis_2_2.legend()
-#
-# axis_2_2 = axs[1, 0]
-# axis_2_2.plot(carrierPltLn, librosa.util.normalize(kanteenEleConcatStreetConvolveIrfft), label = 'Audio with thermos / elephant fingerprint')
-# axis_2_2.plot(carrierPltLn, streetNoiseFftClass.audio(), label = 'Original audio')
-# axis_2_2.title.set_text('Snow thawing x thermos / elephant (time domain)')
-# axis_2_2.set_xlabel('Time in seconds')
-# axis_2_2.legend()
-
-#
-# for i in range(int(20 * freqCoeff)):
-#     convolve[i] = 0
-
-# convolve[int(2000 * freqCoeff)] = -1-0.06659464496026408j
-
-# print(convolve[int(2000 * freqCoeff)])
-
-# resFreqsPlot = convolve_abs * pitches
-#
-
-# newGen_1NoisConVolve = elphResponse * streetNoiseFft
-# newGen_1NoisConVolve = librosa.util.normalize(newGen_1NoisConVolve)
-
-
-
-# axs[2, 1].plot(w, convolve_abs)
-
-# division = fourierObject / fourier
-#
-# roomImpulse = np.fft.irfft(division)
-# roomImpulse = np.real(roomImpulse)
-# roomImpulse = librosa.util.normalize(roomImpulse)
-
-
-# fig, axs = plt.subplots(5, 3, figsize = (20, 10))
-#
-# # axs[0, 0].plot(audioPltLn, )
-#
-# axs[0, 0].plot(w, elphResponse.absNorm())
-# axs[0, 1].plot(w, abs(elphStreetConvolve))
-#
-# axs[1, 0].plot(w, kanteenResponse.absNorm())
-# axs[1, 1].plot(w, abs(kanteenStreetConvolve))
-
-# axs[2, 1].plot(w, librosa.util.normalize(abs(newGen_1)))
-#
-# axs[3, 0].plot(w, kanteen_fft_Plot)
-#
-# axs[3, 1].plot(w, librosa.util.normalize(abs(newGen_1NoisConVolve)))
-#
-# newGenAduio = Defs.qsfWriteIfft(newGen_1NoisConVolve)
-#
-# newGen_1_ifft = np.fft.irfft(newGenAduio)
-#
-# newGen_2_ifft = np.fft.irfft(newGen_2)
-
-plt.show()
-
-#
-# scipy.io.wavfile.write(kanteenEle, sampleRate, librosa.util.normalize(np.real(newGen_2_ifft)))
-
-
-# if (writeFiles == True):
-#
-#     # scipy.io.wavfile.write(eleStreetNoiseCovolve_audio, sampleRate, librosa.util.normalize(np.real(elphStreetConvolveIrfft)))
-#     # scipy.io.wavfile.write(kanteenStreetNoiseCovolve_audio, sampleRate,
-#     #                        librosa.util.normalize(np.real(kanteenStreetConvolveIrfft)))
-#     # scipy.io.wavfile.write(eleKanteenStreetConvolve_audio, sampleRate,
-#     #                        librosa.util.normalize(np.real(eleKanteenConcatStreetConvolveIrfft)))
-#     # scipy.io.wavfile.write(kanteenEleStreetConvolve_audio, sampleRate,
-#     #                        librosa.util.normalize(np.real(kanteenEleConcatStreetConvolveIrfft)))
-#     # scipy.io.wavfile.write(eleKanteen_audio, sampleRate, librosa.util.normalize(elekanteenResponse_ifft))
-#     # scipy.io.wavfile.write(kanteenEle_audio, sampleRate, librosa.util.normalize(kanteenEleResponse_ifft))
 
