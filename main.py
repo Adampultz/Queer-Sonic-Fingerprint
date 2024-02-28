@@ -12,7 +12,6 @@ from subprocess import call
 from pynput import keyboard
 import Plotting as qsfPlot
 import asyncio
-
 action = 0
 
 populationLimit = 50
@@ -21,9 +20,9 @@ populationLimit = 50
 
 # defs.on_release(key)
 
-def keyPress(key):
-    if key == key.space:
-        print('trigger')
+# def keyPress(key):
+#     if key == key.space:
+#         print('trigger')
 
     # def on_release(key):
     #     print('{0} released'.format(
@@ -31,14 +30,15 @@ def keyPress(key):
     #     if key == keyboard.Key.esc:
     #         return 0
 
-listener = keyboard.Listener(on_press=keyPress)
+# listener = keyboard.Listener(on_press=keyPress)
     # listener = keyboard.Listener(on_press=keyPress, on_release=on_release)
-listener.start()
+# listener.start()
 
-folder = '/March_6th/'  # Name of folder for audio files
+
 sendOsc = False  # Send OSC messages to SuperCollider (TRUE/FALSE)
 writeFiles = False  # Write audio files (TRUE/FALSE)
 visulise = True  # Write audio files (TRUE/FALSE)
+run_evolution = True # Generate new generations
 
 sampleRate = 48000
 
@@ -65,32 +65,47 @@ now = datetime.now()  # date and time
 date_string = now.strftime("%d_%m_%Y")
 dt_string = now.strftime("%d_%m_%Y_%H_%M_%S")  # Date and time as string
 dir_path = os.path.dirname(os.path.realpath(__file__))  # Path of project (corresponds to where main.py is located)
+dir_path = os.path.dirname(dir_path)
+dir_path = os.path.dirname(dir_path)
+dir_path = os.path.dirname(dir_path)
 
-# Paths
+audioFolder = '/Audio' # Name of folder for audio files
+input_folder = audioFolder + '/Input'  
+impulse_folder = input_folder + '/Impulses' # Folder for impulses (noise burst and sine sweeps)
+impulseResponse_folder = audioFolder + '/Impulse_Responses' # Folder for impulses (noise burst and sine sweeps)
+output_folder = audioFolder + '/Output'  # Folder for audio output files
+carrierFolder = audioFolder + '/CarrierAudio'
 
-impulse_output_File_Name = dir_path + folder + dt_string + '_sineKanteen_' + '.wav'  # Path of sine wave recording
-object_output_File_Name = dir_path + folder + dt_string + '_kanteen_' + '.wav'  # Not in use?
-room_output_File_Name = dir_path + folder + dt_string + '_kanteenImpulseResponse_' + '.wav'
-convolution_output_File_Name = dir_path + folder + dt_string + '_kanteenConvolution_ ' + '.wav'
+impulse_path = dir_path + impulse_folder
+# obj_path = dir_path + '/Object_Audio_NoiseRedux/'
 object_audio = dir_path + '/TestAudio/kanteenObject_test.wav'
-carrier_path = dir_path + '/TestAudio/HofDripMono.wav'
-eleStreetNoiseCovolve_audio = dir_path + '/TestAudio/eleStreetNoiseCovolve_audio.wav'
-kanteenStreetNoiseCovolve_audio = dir_path + '/TestAudio/kanteenStreetNoiseCovolve_audio.wav'
-eleKanteen_audio = dir_path + folder + dt_string + '_elekanteen_ ' + '.wav'
-kanteenEle_audio = dir_path + folder + dt_string + '_kanteenEle_ ' + '.wav'
-eleKanteenStreetConvolve_audio = dir_path + folder + dt_string + '_elekanteenStreetConcvolve_ ' + '.wav'
-kanteenEleStreetConvolve_audio = dir_path + folder + dt_string + '_kanteenEleStreetConvolve_ ' + '.wav'
-impulse_path = dir_path + '/TestAudio/sineTest.wav'
-obj_path = dir_path + '/Object_Audio_NoiseRedux/'
+carrier_path = dir_path + carrierFolder + '/HofDripMono.wav'
 
-ImpulseResponses = Classes.qsf_ImpulseResponses(obj_path)
+sineSweepExpPath = impulse_path + '/sineTest.wav'
+impulseResponsePath = dir_path + impulseResponse_folder + '/Object_Audio_NoiseRedux'
+
+impulse = sineSweepExpPath
+
+# impulse_output_File_Name = dir_path + folder + dt_string + '_sineKanteen_' + '.wav'  # Path of sine wave recording
+# object_output_File_Name = dir_path + folder + dt_string + '_kanteen_' + '.wav'  # Not in use?
+# room_output_File_Name = dir_path + folder + dt_string + '_kanteenImpulseResponse_' + '.wav'
+# convolution_output_File_Name = dir_path + folder + dt_string + '_kanteenConvolution_ ' + '.wav'
+# eleStreetNoiseCovolve_audio = dir_path + '/TestAudio/eleStreetNoiseCovolve_audio.wav'
+# kanteenStreetNoiseCovolve_audio = dir_path + '/TestAudio/kanteenStreetNoiseCovolve_audio.wav'
+# eleKanteen_audio = dir_path + folder + dt_string + '_elekanteen_ ' + '.wav'
+# kanteenEle_audio = dir_path + folder + dt_string + '_kanteenEle_ ' + '.wav'
+# eleKanteenStreetConvolve_audio = dir_path + folder + dt_string + '_elekanteenStreetConcvolve_ ' + '.wav'
+# kanteenEleStreetConvolve_audio = dir_path + folder + dt_string + '_kanteenEleStreetConvolve_ ' + '.wav'
+
+
+ImpulseResponses = Classes.qsf_ImpulseResponses(impulseResponsePath)
 numObjects = ImpulseResponses.numbObjects()
 
-impulse_data, rate = librosa.load(impulse_path, sr=sampleRate)
+impulse_data, rate = librosa.load(impulse, sr=sampleRate)
 impulse_data = np.asarray(impulse_data, dtype=np.float64)
 impulse_size = len(impulse_data)
 
-impulse_fftClass = Classes.qsfFFT(impulse_path, sampleRate, impulse_size, carrAudioLengthSamp, freqCoef)
+impulse_fftClass = Classes.qsfFFT(impulse, sampleRate, impulse_size, carrAudioLengthSamp, freqCoef)
 impulse_rfft = impulse_fftClass.rfft(0)
 impulse_fft_Plot = impulse_fftClass.fftPlotNorm()
 impulse_rfftSize = impulse_fftClass.size_rfft()
@@ -115,7 +130,7 @@ obj_ResponseClass = numpy.ndarray((numObjects,), dtype=object)
 
 # Iterate over folder with audio recordings of object impulse responses
 
-for subdir, dirs, files in os.walk(obj_path):
+for subdir, dirs, files in os.walk(impulseResponsePath):
     index = 0
     for file in files:
         if file == '.DS_Store':
@@ -160,7 +175,9 @@ audio_carrier = np.asarray(audio_carrier, dtype=np.float64)
 
 audio_carrier = audio_carrier[0:impulse_size]
 
-len_data = len(impulse_path)
+# len_data = len(len_data)
+
+
 
 # fftLength = 168000
 
@@ -229,6 +246,7 @@ if visulise == True:
 
     gen0Plot.showPlot()
 
+
 async def work():
     genIndex = 1
     while True:
@@ -266,6 +284,8 @@ async def work():
 
             gen0Plot.showPlot()
 
+# print(len_data)
+breakpoint()
 
 # Create a folder for storing audio renders, identified by date
 renderID_folder = ''
@@ -306,16 +326,17 @@ if (writeFiles == True):
         scipy.io.wavfile.write(newGenImpulsePath, sampleRate, librosa.util.normalize(newGen_irfft[i]))
         scipy.io.wavfile.write(newGenConvolutionPath, sampleRate, librosa.util.normalize(newGen_carr_convo_irfft[i]))
 
-loop = asyncio.get_event_loop()
-try:
-    asyncio.ensure_future(work())
-    loop.run_forever()
-except KeyboardInterrupt:
-    pass
-finally:
-    print("Closing Loop")
-    call(["open", renderID_folder])
-    call(["open", objectConvolveFolder])
-    loop.close()
+if (run_evolution == True):
+    loop = asyncio.get_event_loop()
+    try:
+        asyncio.ensure_future(work())
+        loop.run_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        print("Closing Loop")
+        call(["open", renderID_folder])
+        call(["open", objectConvolveFolder])
+        loop.close()
 
 
