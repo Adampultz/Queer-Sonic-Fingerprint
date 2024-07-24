@@ -1,6 +1,7 @@
 import numpy as np
 import librosa
 import os
+import Defs
 
 
 class qsf_ImpulseResponses:
@@ -49,55 +50,70 @@ class qsf_ImpulseResponses:
 
 
 class qsfFFT:
-    def __init__(self, audio, sRate, length, carrAudioLength, freqCoef):
+    def __init__(self, audio, sRate, carrAudioLength, freqCoef):
         aud_data, rate = librosa.load(audio, sr=sRate)
-        aud_data = aud_data[0:length]
 
         if (np.max(aud_data) < 1):
             aud_data = librosa.util.normalize(aud_data)
 
-        self.carrAudioLength = carrAudioLength
-        self.audioData = aud_data
+        # self.carrAudioLength = carrAudioLength
+        # self.audioData = aud_data
         self.audioDataArray = np.asarray(aud_data, dtype=np.float64)
         self.sRate = rate
         self.freqCoef = freqCoef
 
+        audioSize = self.sizeSamples()
+
+        if Defs.isPowerOf2(audioSize) == False:
+            nextPow2 = Defs.nextPowerOf2(audioSize)
+            self.audioDataArray = np.pad(self.audioDataArray, (0, nextPow2 - audioSize), 'constant')
+        
     def audio(self):
         return self.audioData
+    
+    def sizeSamples(self):
+        return len(self.audioDataArray)
+    
+    def zeroPadAudio(self, newSize):
+        self.audioDataArray = np.pad(self.audioDataArray, (0, newSize - self.sizeSamples()), 'constant')
 
-    def fft(self, loBrickWall, DC_filter):  # perform fft, with brickwall hipass and DC filters
-        data = self.audioData
-        size = len(data)
-        array = data[0: size]
+    # def fft(self, loBrickWall, DC_filter):  # perform fft, with brickwall hipass and DC filters
+    #     data = self.audioData
+    #     size = len(data)
+    #     array = data[0: size]
 
-        if (size < self.carrAudioLength):
-            array = np.pad(array, (0, self.carrAudioLength - size), 'constant')
+    #     if (size < self.carrAudioLength):
+    #         array = np.pad(array, (0, self.carrAudioLength - size), 'constant')
 
-        fourier = np.fft.fft(array)
+    #     fourier = np.fft.fft(array)
 
-        if DC_filter == 1:
-            fourier = fourier - np.mean(fourier) # DC offset
+    #     if DC_filter == 1:
+    #         fourier = fourier - np.mean(fourier) # DC offset
 
-        for i in range(int(loBrickWall * self.freqCoef)):
-            fourier[i] *= 0
+    #     for i in range(int(loBrickWall * self.freqCoef)):
+    #         fourier[i] *= 0
 
-        self.rfft = fourier
-        return fourier
+    #     self.rfft = fourier
+    #     return fourier
 
 # perform rfft, with brickwall hipass and DC filters. Rfft only produce the first half of the fft transform, as the second half is a mirror image
     def rfft(self, loBrickWall):
-        data = self.audioData
-        size = len(data)
-        array = data[0: size]
+        # data = self.audioData
+        # size = len(data)
+        # array = data[0: size]
+       
+        # if (size < self.carrAudioLength):
+        #     array = np.pad(array, (0, self.carrAudioLength - size), 'constant')
 
-        if (size < self.carrAudioLength):
-            array = np.pad(array, (0, self.carrAudioLength - size), 'constant')
+        # if Defs.isPowerOf2(self.sizeSamples()) == False:
+        #     self.audioDataArray = np.pad(self.audioDataArray, (0, newSize - self.sizeSamples()), 'constant')
 
-        fourier = np.fft.rfft(array)
+        fourier = np.fft.rfft(self.audioDataArray)
         fourier = fourier - np.mean(fourier) # DC offset
 
         for i in range(loBrickWall):
             fourier[i] = 0
+            
         self.rfft = fourier
 
         return fourier
@@ -107,7 +123,7 @@ class qsfFFT:
             return len(self.rfft)
         else:
             print("Please calculate rfft before calling size")
-        return 0
+            return 0
 
     def fftPlot(self):
         if hasattr(self, 'rfft'):
