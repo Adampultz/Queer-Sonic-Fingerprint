@@ -12,6 +12,8 @@ from subprocess import call
 from pynput import keyboard
 import Plotting as qsfPlot
 import asyncio
+import math
+
 action = 0
 
 populationLimit = 50
@@ -36,9 +38,9 @@ populationLimit = 50
 
 
 sendOsc = False  # Send OSC messages to SuperCollider (TRUE/FALSE)
-writeFiles = False  # Write audio files (TRUE/FALSE)
-visulise = True  # Write audio files (TRUE/FALSE)
-run_evolution = True # Generate new generations
+writeFiles = True  # Write audio files (TRUE/FALSE)
+visualise = True  # Write audio files (TRUE/FALSE)
+run_evolution = False # Generate new generations
 
 sampleRate = 48000
 
@@ -78,57 +80,20 @@ carrierFolder = audioFolder + '/CarrierAudio'
 
 impulse_path = dir_path + impulse_folder
 # obj_path = dir_path + '/Object_Audio_NoiseRedux/'
-object_audio = dir_path + '/TestAudio/kanteenObject_test.wav'
+# object_audio = dir_path + '/TestAudio/kanteenObject_test.wav'
 carrier_path = dir_path + carrierFolder + '/HofDripMono.wav'
 
 sineSweepExpPath = impulse_path + '/sineTest.wav'
-impulseResponsePath = dir_path + impulseResponse_folder + '/Object_Audio_NoiseRedux'
-
-impulse = sineSweepExpPath
-
-# impulse_output_File_Name = dir_path + folder + dt_string + '_sineKanteen_' + '.wav'  # Path of sine wave recording
-# object_output_File_Name = dir_path + folder + dt_string + '_kanteen_' + '.wav'  # Not in use?
-# room_output_File_Name = dir_path + folder + dt_string + '_kanteenImpulseResponse_' + '.wav'
-# convolution_output_File_Name = dir_path + folder + dt_string + '_kanteenConvolution_ ' + '.wav'
-# eleStreetNoiseCovolve_audio = dir_path + '/TestAudio/eleStreetNoiseCovolve_audio.wav'
-# kanteenStreetNoiseCovolve_audio = dir_path + '/TestAudio/kanteenStreetNoiseCovolve_audio.wav'
-# eleKanteen_audio = dir_path + folder + dt_string + '_elekanteen_ ' + '.wav'
-# kanteenEle_audio = dir_path + folder + dt_string + '_kanteenEle_ ' + '.wav'
-# eleKanteenStreetConvolve_audio = dir_path + folder + dt_string + '_elekanteenStreetConcvolve_ ' + '.wav'
-# kanteenEleStreetConvolve_audio = dir_path + folder + dt_string + '_kanteenEleStreetConvolve_ ' + '.wav'
-
+# impulseResponsePath = dir_path + impulseResponse_folder + '/Object_Audio_NoiseRedux'
+impulseResponsePath = dir_path + impulseResponse_folder + '/Object_Audio_DI'
 
 ImpulseResponses = Classes.qsf_ImpulseResponses(impulseResponsePath)
 numObjects = ImpulseResponses.numbObjects()
-
-impulse_data, rate = librosa.load(impulse, sr=sampleRate)
-impulse_data = np.asarray(impulse_data, dtype=np.float64)
-impulse_size = len(impulse_data)
-
-impulse_fftClass = Classes.qsfFFT(impulse, sampleRate, impulse_size, carrAudioLengthSamp, freqCoef)
-impulse_rfft = impulse_fftClass.rfft(0)
-impulse_fft_Plot = impulse_fftClass.fftPlotNorm()
-impulse_rfftSize = impulse_fftClass.size_rfft()
-
-# Arrays
-
-obj_paths_array = []
-obj_fft_Plot = np.zeros((numObjects, impulse_rfftSize))
-obj_rfft = np.zeros((numObjects, impulse_rfftSize), dtype=np.complex128)
-newGen_CarrierConvo = np.zeros((numObjects, impulse_rfftSize), dtype=np.complex128)
-obj_irfft = np.zeros((numObjects, impulse_size))
-newGen_irfft = np.zeros((populationLimit, impulse_size))
-impulse_irfft = np.zeros((populationLimit, impulse_size))
-obj_carr_convo_irfft = np.zeros((numObjects, impulse_size))
-newGen_carr_convo_irfft = np.zeros((populationLimit, impulse_size))
 objectNames = np.ndarray((numObjects,), dtype=object)
-
+obj_paths_array = []
 obj_FftClass = numpy.ndarray((numObjects,), dtype=object)
-axisArray = numpy.ndarray((4, 4), dtype=object)
-obj_Response = np.zeros((numObjects, impulse_rfftSize), dtype=np.complex128)
-obj_ResponseClass = numpy.ndarray((numObjects,), dtype=object)
+obj_maxSizeSamp = 0
 
-# Iterate over folder with audio recordings of object impulse responses
 
 for subdir, dirs, files in os.walk(impulseResponsePath):
     index = 0
@@ -148,10 +113,82 @@ for subdir, dirs, files in os.walk(impulseResponsePath):
 
             obj_paths_array.append(path)  # local
 
-            obj_FftClass[index] = Classes.qsfFFT(path, sampleRate, impulse_rfftSize, carrAudioLengthSamp, freqCoef)
+            obj_FftClass[index] = Classes.qsfFFT(path, sampleRate, carrAudioLengthSamp, freqCoef)
+
+            obj_sizeSamp = obj_FftClass[index].sizeSamples()
+
+            if obj_sizeSamp > obj_maxSizeSamp:
+                obj_maxSizeSamp = obj_sizeSamp
+            
+            # objFft = obj_FftClass[index].rfft(brickWallHiPass)
+            # objFft_size = len(objFft)
+
+            # obj_rfft.append(objFft)
+            # obj_fft_Plot.append(obj_FftClass[index].fftPlotNorm())
+
+            # response = Classes.qsfObjFreqR(obj_rfft[index], impulse_rfft)  # Local
+            # obj_ResponseClass[index] = response
+            # obj_Response[index] = response.response()
+
+            index += 1
+
+impulse = sineSweepExpPath # Used for changing impulse, for example between noise burst, sine sweep, and exponential sine sweep
+
+impulse_data, rate = librosa.load(impulse, sr=sampleRate)
+impulse_data_sizeSamp = len(impulse_data)
+
+impulse_fftClass = Classes.qsfFFT(impulse, sampleRate, carrAudioLengthSamp, freqCoef)
+
+if impulse_data_sizeSamp < obj_maxSizeSamp:
+    impulse_fftClass.zeroPadAudio(obj_maxSizeSamp)
+
+impulse_rfft = impulse_fftClass.rfft(0)
+impulse_rfftSize = impulse_fftClass.size_rfft()
+impulse_fft_Plot = impulse_fftClass.fftPlotNorm()
+
+# Arrays
+
+obj_fft_Plot = np.zeros((numObjects, impulse_rfftSize))
+obj_rfft = np.zeros((numObjects, impulse_rfftSize), dtype=np.complex128)
+newGen_CarrierConvo = np.zeros((numObjects, impulse_rfftSize), dtype=np.complex128)
+obj_irfft = np.zeros((numObjects, obj_maxSizeSamp))
+newGen_irfft = np.zeros((populationLimit, obj_maxSizeSamp))
+impulse_irfft = np.zeros((populationLimit, obj_maxSizeSamp))
+obj_carr_convo_irfft = np.zeros((numObjects, obj_maxSizeSamp))
+newGen_carr_convo_irfft = np.zeros((populationLimit, obj_maxSizeSamp))
+
+
+axisArray = numpy.ndarray((4, 4), dtype=object)
+obj_Response = np.zeros((numObjects, impulse_rfftSize), dtype=np.complex128)
+obj_ResponseClass = numpy.ndarray((numObjects,), dtype=object)
+
+# Iterate over folder with audio recordings of object impulse responses
+
+for subdir, dirs, files in os.walk(impulseResponsePath):
+    index = 0
+    for file in files:
+        if file == '.DS_Store':
+            print("Ignoring file '.DS_Store'")
+        else:
+            objFileName = ''
+            path = os.path.join(subdir, file)  # local
+
+            # for char in range(len(file)):
+            #     if file[char + 2] == '_':
+            #         objectNames[index] = objFileName
+            #         break
+            #     else:
+            #         objFileName += file[char + 2]
+
+            # obj_paths_array.append(path)  # local
+
+            obj_FftClass[index] = Classes.qsfFFT(path, sampleRate, carrAudioLengthSamp, freqCoef)
+
+            if obj_FftClass[index].sizeSamples() < obj_maxSizeSamp:
+                obj_FftClass[index].zeroPadAudio(obj_maxSizeSamp)
+
             obj_rfft[index] = obj_FftClass[index].rfft(brickWallHiPass)
             obj_fft_Plot[index] = obj_FftClass[index].fftPlotNorm()
-
             response = Classes.qsfObjFreqR(obj_rfft[index], impulse_rfft)  # Local
             obj_ResponseClass[index] = response
             obj_Response[index] = response.response()
@@ -161,7 +198,6 @@ for subdir, dirs, files in os.walk(impulseResponsePath):
 responseLength = len(obj_Response[0])
 
 objChild = np.zeros((numObjects, numObjects, responseLength), dtype=np.complex128)
-sourceOBJ_convo = np.zeros((numObjects, responseLength), dtype=np.complex128)
 newGen = np.zeros((numObjects, responseLength), dtype=np.complex128)
 newGenNoMutation = np.zeros((numObjects, responseLength), dtype=np.complex128)
 
@@ -173,20 +209,34 @@ audioIndex_Object = 0
 audio_carrier, carrier_sRate = librosa.load(carrier_path, sr=sampleRate)
 audio_carrier = np.asarray(audio_carrier, dtype=np.float64)
 
-audio_carrier = audio_carrier[0:impulse_size]
+audio_carrier = audio_carrier[0:obj_maxSizeSamp]
 
 # len_data = len(len_data)
 
-
+# print(len(obj_Response[0]))
+# print(len(audio_carrier))
 
 # fftLength = 168000
 
-carrier_FftClass = Classes.qsfFFT(carrier_path, sampleRate, carrAudioLengthSamp, carrAudioLengthSamp, freqCoef)
+carrier_FftClass = Classes.qsfFFT(carrier_path, sampleRate, carrAudioLengthSamp, freqCoef)
 carrier_Fft = carrier_FftClass.rfft(brickWallHiPass)
 carrier_fft_Plot = carrier_FftClass.fftPlotNorm()
 
+carrierFft_Size = carrier_FftClass.size_rfft()
+
+sourceOBJ_convo = np.zeros((numObjects, carrierFft_Size), dtype=np.complex128)
+
+numConvoBlocks = math.ceil(carrierFft_Size / impulse_rfftSize)
+
+print(numConvoBlocks)
+
+breakpoint()
+
+print(len(sourceOBJ_convo[0]))
 for i in range(numObjects):
     sourceOBJ_convo[i] = (obj_Response[i] * carrier_Fft).copy()
+
+breakpoint()
 
 # Genetic Operators
 
@@ -221,19 +271,17 @@ for i in range(numObjects**2 - numObjects):
 
 # Data visualization
 
-if visulise == True:
+if visualise == True:
 
     numPlotsPerPage = 6
     numPlots = int((numObjects ** 2 - numObjects) / numPlotsPerPage)
     firstPlot = 0
     lastPlot = numPlotsPerPage - 1
-
+    
     newGenPlot = np.ndarray((numPlots,), dtype=object)
-
     gen0Plot = qsfPlot.Qsfplot(sampleRate, numObjects, impulse_rfftSize, impulse_size)
-
     gen0Plot.plotFirstGen(evoClass.getSlice(), objectNames, obj_FftClass)
-
+    
     for i in range(numPlots):
         newGenPlot[i] = qsfPlot.Qsfplot(sampleRate, numPlotsPerPage, impulse_rfftSize, impulse_size)
         newGenPlot[i].plotNewGen(evoClass.getSlice(), objectNames, newGen[firstPlot:lastPlot], newGen_irfft[firstPlot:lastPlot], newGen_carr_convo_irfft[firstPlot:lastPlot], firstPlot, lastPlot)
@@ -246,56 +294,58 @@ if visulise == True:
 
     gen0Plot.showPlot()
 
+# breakpoint()
 
-async def work():
-    genIndex = 1
-    while True:
-        await asyncio.sleep(5)
+    async def work():
+        genIndex = 1
+        while True:
+            await asyncio.sleep(5)
 
-        newGen = evoClass.nextGen()
+            newGen = evoClass.nextGen()
 
-        newGenNoMutation = evoClass.newGenNoMutation()
+            newGenNoMutation = evoClass.newGenNoMutation()
 
-        newGen_CarrierConvo = evoClass.convolve()
+            newGen_CarrierConvo = evoClass.convolve()
 
-        print("Generation " + str(genIndex))
-        genIndex += 1
+            print("Generation " + str(genIndex))
+            genIndex += 1
 
-        if visulise == True:
+            if visulise == True:
 
-            numPlotsPerPage = 6
-            numPlots = int((numObjects ** 2 - numObjects) / numPlotsPerPage)
-            firstPlot = 0
-            lastPlot = numPlotsPerPage - 1
+                numPlotsPerPage = 6
+                numPlots = int((numObjects ** 2 - numObjects) / numPlotsPerPage)
+                firstPlot = 0
+                lastPlot = numPlotsPerPage - 1
 
-            newGenPlot = np.ndarray((numPlots,), dtype=object)
+                newGenPlot = np.ndarray((numPlots,), dtype=object)
 
-            for i in range(numPlots):
-                newGenPlot[i] = qsfPlot.Qsfplot(sampleRate, numPlotsPerPage, impulse_rfftSize, impulse_size)
-                newGenPlot[i].plotNewGen(evoClass.getSlice(), objectNames, newGen[firstPlot:lastPlot],
-                                         newGen_irfft[firstPlot:lastPlot], newGen_carr_convo_irfft[firstPlot:lastPlot],
-                                         firstPlot, lastPlot)
-                # qsfPlot.plotNewGen(evoClass.getSlice(), sampleRate, objectNames, newGen[firstPlot:lastPlot], newGen_irfft[firstPlot:lastPlot], newGen_carr_convo_irfft[firstPlot:lastPlot], firstPlot, lastPlot)
-                firstPlot += numPlotsPerPage
-                lastPlot += numPlotsPerPage
+                for i in range(numPlots):
+                    newGenPlot[i] = qsfPlot.Qsfplot(sampleRate, numPlotsPerPage, impulse_rfftSize, impulse_size)
+                    newGenPlot[i].plotNewGen(evoClass.getSlice(), objectNames, newGen[firstPlot:lastPlot],
+                                            newGen_irfft[firstPlot:lastPlot], newGen_carr_convo_irfft[firstPlot:lastPlot],
+                                            firstPlot, lastPlot)
+                    # qsfPlot.plotNewGen(evoClass.getSlice(), sampleRate, objectNames, newGen[firstPlot:lastPlot], newGen_irfft[firstPlot:lastPlot], newGen_carr_convo_irfft[firstPlot:lastPlot], firstPlot, lastPlot)
+                    firstPlot += numPlotsPerPage
+                    lastPlot += numPlotsPerPage
 
-            for i in range(numPlots):
-                newGenPlot[i].showPlot()
+                for i in range(numPlots):
+                    newGenPlot[i].showPlot()
 
-            gen0Plot.showPlot()
+                gen0Plot.showPlot()
 
 # print(len_data)
-breakpoint()
 
 # Create a folder for storing audio renders, identified by date
 renderID_folder = ''
 objectConvolveFolder = ''
 
 if (writeFiles == True):
-    renderFolder = dir_path + folder + date_string
+    renderFolder = output_folder + '/' + date_string
+    print(renderFolder)
+    breakpoint()
     renderID_folder = renderFolder + '/' + dt_string
     objectConvolveFolder = renderFolder + '/' + 'Object_Carrier_Convolution/'
-    objectRawImpulseFolder = renderFolder + '/' + 'Object_Impulse/'
+    objectRawImpulseFolder = renderFolder + '/' + 'Object_Raw_Impulse/'
     if not os.path.exists(renderFolder):
         os.makedirs(renderFolder)
 

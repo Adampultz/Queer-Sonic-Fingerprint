@@ -1,6 +1,8 @@
 import numpy as np
+import math
 import librosa
 from pynput import keyboard
+
 
 
 def normalize(arr, t_min, t_max):
@@ -34,3 +36,21 @@ def trigNewGen():
 
     listener = keyboard.Listener(on_press=keyPress, on_release=on_release)
     listener.start()
+
+def isPowerOf2 (x):
+ 
+    # First x in the below expression 
+    # is for the case when x is 0 
+    return (x and (not(x & (x - 1))) )
+ 
+def nextPowerOf2(x):
+    # Calculate log2 of N
+    a = int(math.log2(x))
+ 
+    # If 2^a is equal to N, return N
+    if 2**a == x:
+        return x
+     
+    # Return 2^(a + 1)
+    return 2**(a + 1)
+

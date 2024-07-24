@@ -79,19 +79,18 @@ class Qsfplot:
 
         numColumns = 2
         numRows = self.numObjects
-
+        
         axisArray = np.ndarray((numRows, numColumns), dtype=object)
         obj_fft_Plot = np.zeros((self.numObjects, self.fftsize))
 
-
         for i in range(self.numObjects):
             obj_fft_Plot[i] = obj_FftClass[i].fftPlotNorm()
-
+       
         fig, axs = plt.subplots(numRows, numColumns, figsize=(20, 10))
 
         # Scale slice point to fit in visualisation
         scaledSlice = defs.scale_number(slice, 0, self.fftsize, 0, self.sampleRate / 2)
-
+        
         for row in range(numRows):
             objID = row
             plotRow = (row)
@@ -101,18 +100,27 @@ class Qsfplot:
             column_3 = 2
             column_4 = 3
             print(objectNames[objID])
+
+            audioPlot = self.audioPltLn
+            objAudioPlot = obj_FftClass[objID].audio()
+
+            audioPlotLength = len(audioPlot)
+
+            if len(objAudioPlot) > audioPlotLength:
+                objAudioPlot = obj_FftClass[objID].audio()[0:audioPlotLength]
+                print("Object plot is longer than audiop plot. Cropping object plot to fit")
+            
             axisArray[plotRow][column] = axs[plotRow, column]
-            axisArray[plotRow][column].plot(self.audioPltLn,  obj_FftClass[objID].audio())
+            axisArray[plotRow][column].plot(self.audioPltLn,  objAudioPlot)
             axisArray[plotRow][column].set_ylabel('Amplitude')
             axisArray[plotRow][column].title.set_text(objectNames[objID] + ' impulse response (time domain)')
-
             axisArray[plotRow][column_2] = axs[plotRow, column_2]
             axisArray[plotRow][column_2].plot(self.w, obj_fft_Plot[objID])
             axisArray[plotRow][column_2].vlines(x=scaledSlice, ymin=0, ymax=0.5,
                                    colors = 'red',
                                    label = 'slice point')
             axisArray[plotRow][column_2].title.set_text(objectNames[objID] + ' frequency response (frequency domain)')
-
+            
     def plotNewGen(self, slice, objectNames, FFT, impulseResponse, audioConvolve,
                        firstPlot, lastPlot):
         numObjects_ = len(FFT)
@@ -121,10 +129,9 @@ class Qsfplot:
         FFT_ = FFT.copy()
         impulseResponse_ = impulseResponse.copy()
         audioConvolve_ = audioConvolve.copy()
-
         axisArray = np.ndarray((numRows, numColumns), dtype=object)
         obj_fft_Plot = np.zeros((numObjects_, self.fftsize))
-
+        
 
         for i in range(numObjects_):
             obj_fft_Plot[i] = librosa.util.normalize(np.abs(FFT[i]))
