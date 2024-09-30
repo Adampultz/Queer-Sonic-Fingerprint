@@ -1,2 +1,2 @@
-# Queer Sonic Fingerprint
- 
+# Kin_sss
+ Code for the sound installation "Kin"
