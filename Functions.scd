@@ -513,6 +513,58 @@
 	spectrum;
 };
 
+~readFolderOfFolders = {|path|
+	PathName(path).folders.collect{|f|
+		var audioBuf;
+		f.files.collect{|i|
+			audioBuf = Buffer.read(s, i.fullPath);
+			s.sync;
+			if (audioBuf.numChannels > 1, {
+				var monoBuf;
+				monoBuf = Buffer(s, numChannels: 1);
+
+				FluidBufCompose.processBlocking(s, audioBuf, numChans: 1,  destination: monoBuf, destGain: -6.dbamp);
+				FluidBufCompose.processBlocking(s, audioBuf, startChan: 1, numChans: 1,  destination: monoBuf, destGain: -6.dbamp);
+				audioBuf = monoBuf;
+			});
+			audioBuf
+		};
+	};
+};
+
+~playConversation = {|irBuffer, sourceBuffer, index|
+	if (~conversations, {
+		if(~conversationIsPlaying.not, {
+			Routine{
+			var conversationBuf, irSpectrum, pan;
+			irBuffer.postln;
+			~conversationIsPlaying = true;
+
+			conversationBuf = sourceBuffer;
+
+
+			s.sync;
+
+			irSpectrum = ~prepConvolve.(irBuffer.normalize, ~convolveFftsize);
+
+			pan = (1 / (~numEnvironments - 1)).clip(0.0, 1.0) * index;
+
+
+				1.do{
+					var playBack;
+					playBack = Synth(\speechConvolve, [\irBuffer, irSpectrum, \fftSize, ~convolveFftsize, \mixerBus, ~mixerBus, \audioBuffer, conversationBuf, \compressThresh, ~speechCompressThresh, \ampBus, ~conversationVolume, \convolveMix, ~conversationConvMix, \pan, pan], target: ~convolveGrp );
+
+					(conversationBuf.numFrames / s.sampleRate).wait;
+
+					~conversationIsPlaying = false;
+					1.0.wait;
+					irSpectrum.free;
+				};
+			}.play;
+		});
+	});
+};
+
 // UGen for playing new irs.
 SynthDef(\bufPlay,
 	{|buf, panPos, index, slicePoint, envirSpectralShape, specCentAvgBus, envCentAvgBus, distanceBus, mixerBus, nyquist, volume, windowSize, chans|
@@ -584,7 +636,7 @@ SynthDef(\rec,
 		recEnv = BufWr.ar(sourceEnv * env, envBuf, phasor, loop:0);
 }).add;
 
-~playBufs =  {|index, buffers, slicePoints, maxWait = 1.5, numSpeakers|
+~playBufs =  {|index, buffers, slicePoints, maxWait = 1.5, numSpeakers, conversationBuffers|
 	var size = buffers.size;
 	var scrambleArray = Array.fill(size, {|i| i}).scramble;
 	scrambleArray.do({|i|
@@ -592,6 +644,13 @@ SynthDef(\rec,
 		// var waitTime = (1.0 / size).rrand(maxWait).pow(2);
 		var pan = ((2.0 / numSpeakers).rand - (1 / numSpeakers)) + ((2.0 / numSpeakers) * index);
 		Synth(\bufPlay, [\buf, buffers[i], \panPos, pan, \slicePoint, slicePoints[i] / s.sampleRate, \specCentAvgBus, ~specCentAvgBus[index][i], \envCentAvgBus, ~envCentAvg[index], \envirSpectralShape, ~envCent[index], \distanceBus, ~distanceBus[index][i], \mixerBus, ~mixerBus, \nyquist, ~nyquist, \volume, ~irVolume[index], \windowSize, 2048, \numChans, numSpeakers], target: ~synthGrp);
+
+		if (((1.0 / size) * ~conversationProb).coin, {
+			var buf = conversationBuffers.choose.choose;
+			s.sync;
+			~playConversation.(buffers[i], buf, index)
+		});
+
 		waitTime.wait;
 	});
 };
@@ -618,3 +677,20 @@ SynthDef(\simpleBufPlay,
 	fbSynths[pebbleCounter] = Synth(\feedBack, [\irBuffer, spectrum.bufnum, \fftSize, fftSize, \mixerBus, ~mixerBus, \feedbackVol, ~feedbackVol[index], \convolveMix, ~convolveMix[index], \micChan, index, \thresHoldBus, thrBus, \pan, pan], target: ~convolveGrp);
 	pebbleCounter;
 };
+
+SynthDef(\speechConvolve,
+	{|irBuffer, fftSize, audioBuffer, fadeTime = 2, gate = 1, mixerBus, convolveMix, compressThresh = 0.01, pan = 0, ampBus|
+		var source, convolution, out, env;
+		source = PlayBuf.ar(1, audioBuffer);
+		env = EnvGen.kr(Env.asr(fadeTime, releaseTime: fadeTime), gate, doneAction: 2);
+		convolution = PartConv.ar(source, fftSize, irBuffer);
+		out = XFade2.ar(source, convolution, In.kr(convolveMix));
+		out = Compander.ar(out, out, thresh: compressThresh,
+			slopeBelow: 1,
+			slopeAbove: 0.5,
+			clampTime:  0.02,
+			relaxTime:  0.1);
+		out = Limiter.ar(out, 0.9);
+		out = PanX.ar(~numEnvironments, out * In.kr(ampBus), pan);
+		Out.ar(mixerBus, out * env);
+}).add;
