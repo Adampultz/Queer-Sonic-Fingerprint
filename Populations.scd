@@ -74,9 +74,13 @@
 			}}.play;
 		});
 
+		if (~postInfo[popIndex], {
+			"Population %: SlicePoints".format(popIndex).postln});
+
 		// Determine slice points for all irs and extract statistics (genotype)
 		newBufs[cycleGenInd].size.collect{|i|
 			var slice, slicePoint;
+
 			// Expand featureBuffers list if needed
 			if (i >= featureBuffersGeno.size, {featureBuffersGeno.add(Buffer(s, numChannels: 1));
 				spectralCentroidGeno.add(0);
@@ -108,8 +112,11 @@
 
 		s.sync;
 
+		if (~postInfo[popIndex], {
+			"Population %: Playback".format([popIndex]).postln;});
+
 		// Playback routine of irs
-		~playBufs.(popIndex, newBufs[cycleGenInd], slicePointArray, ~bufPlayMaxWaitTime, ~numEnvironments);
+		~playBufs.(popIndex, newBufs[cycleGenInd], slicePointArray, ~bufPlayMaxWaitTime, ~numEnvironments, ~conversationBuffers);
 
 		// Update spectral features of each individual, extracted from the environment (phenotype)
 		newBufs[cycleGenInd].size.do({|i|
@@ -142,12 +149,6 @@
 				{cycleGenInd = 0});
 
 			oldestGen = (cycleGenInd + 1) % ~ancestralMemory;
-
-			// Free buffers of oldest generation
-			/*	if (newBufs[oldestGen] != nil, {
-			newBufs[oldestGen].do{|i|
-			i.free};
-			});*/
 
 			s.sync;
 
@@ -507,6 +508,8 @@
 				s.sync;
 			};
 
+			~playConversation.(newBufs[cycleGenInd].choose, ~conversationBuffers.choose.choose, popIndex);
+
 			if (genCounter > 5, {
 				if (1.0.coin, {
 					// "New convolution spectrum".postln;
@@ -538,7 +541,7 @@
 
 			// "Play new buffers".postln;
 
-			~playBufs.(popIndex, newBufs[cycleGenInd], slicePointArray, ~bufPlayMaxWaitTime, ~numEnvironments);
+			~playBufs.(popIndex, newBufs[cycleGenInd], slicePointArray, ~bufPlayMaxWaitTime, ~numEnvironments, ~conversationBuffers);
 
 			s.sync;
 
