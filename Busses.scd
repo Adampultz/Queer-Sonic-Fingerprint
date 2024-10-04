@@ -8,6 +8,10 @@
 
 ~irVolume = ~numEnvironments.collect{Bus.control(s)}; // 0 - 1. Volume of the playback of the irs. NanoKontrol: slider 3
 
+~conversationVolume = Bus.control(s);
+
+~conversationConvMix = Bus.control(s).set(0);
+
 ~masterVol = Bus.control(s); // 0 -1. Master volume. NanoKontrol: slider 1
 
 // Analysis busses
