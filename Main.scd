@@ -50,15 +50,19 @@ s.waitForBoot{
 
 	s.sync;
 
-	"Functions_newGen_1.2.scd".loadRelative;
+	"Functions.scd".loadRelative;
 
 	s.sync;
 
-	/*~inSynth = Synth(\soundIn, target: ~envGrp);*/
-
 	~objPath = "/Users/adammac2023/Documents/Musik-business/Adam/2024/Speculative Sound Synthesis/Code_27.07.2024/Impulse_responses/";
 
+	~museumPath = "/Users/adammac2023/Documents/Musik-business/Projects/Queer Sonic Fingerprint/Audio/Museum Audio/";
+
 	~test = PathName(~objPath).files.do{|i|};
+
+	~conversationBuffers = ~readFolderOfFolders.(~museumPath);
+
+	s.sync;
 
 	~parentBuffers = ~test.size.collect{|i| Signal.read(~test[i].fullPath)};
 
@@ -83,7 +87,7 @@ s.waitForBoot{
 
 	~newSigBufs = ~newSigs[0].size.collect{|i| Buffer.loadCollection(s, ~newSigs[0][i])};
 
-	~parentIRs = ~newSigBufs.deepCopy;
+	// ~parentIRs = ~newSigBufs.deepCopy;
 
 	s.sync;
 
