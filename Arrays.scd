@@ -13,3 +13,5 @@
 ~testSpecArray = 8.collect{}.asList;
 
 ~variancePlot = List(0);
+
+~conversationBuffers = [].asList;
