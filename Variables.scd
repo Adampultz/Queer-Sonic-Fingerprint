@@ -62,10 +62,22 @@
 
 ~maxNumIndividuals = 100;
 
+~speechCompressThresh = 0.1;
+
 ~envirIrOn = true;
 
 ~postInfo = ~numEnvironments.collect{false};
 
 ~roomIrPlaying = false;
+
+~conversations = true;
+
+~conversationIsPlaying = false;
+
+~conversationProb = 0.5;
+
+~speechCompressThresh = 0.01;
+
+
 
 s.latency = 0.1;
