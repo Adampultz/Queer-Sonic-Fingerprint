@@ -8,11 +8,16 @@
 
 ~irVolume = ~numEnvironments.collect{Bus.control(s)}; // 0 - 1. Volume of the playback of the irs. NanoKontrol: slider 3
 
+~gyroBus = ~numSensors.collect{|i| 3.collect{ Bus.control(s)}};
+~accBus = ~numSensors.collect{|i| 3.collect{ Bus.control(s)}};
+
 ~conversationVolume = Bus.control(s);
 
 ~conversationConvMix = Bus.control(s).set(0);
 
 ~masterVol = Bus.control(s); // 0 -1. Master volume. NanoKontrol: slider 1
+
+~convolveAmp = Bus.control(s).set(0.5); // 0 -1. Master volume. NanoKontrol: slider 1
 
 // Analysis busses
 
@@ -31,3 +36,5 @@
 // Audio busses
 
 ~mixerBus = Bus.audio(s, numChannels: ~numEnvironments);
+
+~exciterBus = ~numExciters.collect{Bus.audio(s, numChannels: 1)};
