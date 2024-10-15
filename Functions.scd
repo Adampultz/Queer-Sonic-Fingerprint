@@ -205,15 +205,23 @@
 };
 
 // Irfft with audio envelope to create a more impulse-like amplitude curve (in case there's artefacts in the ir tail)
-~newGeneration = {|item, cosTable, audioEnv|
-	(item.real.irfft(item.imag, cosTable) * audioEnv).normalize;
+
+~newGeneration = {|item, cosTable, audioEnv, audioEnvOn = false|
+	if (audioEnvOn, {
+		(item.real.irfft(item.imag, cosTable)).normalize}, {
+		(item.real.irfft(item.imag, cosTable) * audioEnv).normalize});
 };
 
-~newGenerationArray = {|array, cosTable, audioEnv|
-	var y;
-	array.size.collect{|i|
-		(array[i].real.irfft(array[i].imag, cosTable) * audioEnv).normalize;
-	};
+~newGenerationArray = {|array, cosTable, audioEnv, audioEnvOn = false|
+	if (audioEnvOn, {
+		array.size.collect{|i|
+			(array[i].real.irfft(array[i].imag, cosTable)).normalize;
+		}
+	}, {
+		array.size.collect{|i|
+			(array[i].real.irfft(array[i].imag, cosTable) * audioEnv).normalize;
+		};
+	})
 };
 
 
@@ -532,34 +540,46 @@
 	};
 };
 
+// Function for playing pre-recorded audio, optionally filtered by IRs
 ~playConversation = {|irBuffer, sourceBuffer, index|
 	if (~conversations, {
 		if(~conversationIsPlaying.not, {
+			var conversationBuf, convoBufLength;
 			Routine{
-			var conversationBuf, irSpectrum, pan;
-			irBuffer.postln;
-			~conversationIsPlaying = true;
+				// irBuffer.postln;
+				~conversationIsPlaying = true;
 
-			conversationBuf = sourceBuffer;
-
-
-			s.sync;
-
-			irSpectrum = ~prepConvolve.(irBuffer.normalize, ~convolveFftsize);
-
-			pan = (1 / (~numEnvironments - 1)).clip(0.0, 1.0) * index;
-
+				conversationBuf = sourceBuffer;
+				convoBufLength = (conversationBuf.numFrames / s.sampleRate);
+				s.sync;
 
 				1.do{
-					var playBack;
-					playBack = Synth(\speechConvolve, [\irBuffer, irSpectrum, \fftSize, ~convolveFftsize, \mixerBus, ~mixerBus, \audioBuffer, conversationBuf, \compressThresh, ~speechCompressThresh, \ampBus, ~conversationVolume, \convolveMix, ~conversationConvMix, \pan, pan], target: ~convolveGrp );
+					var playBack, whichBus, whichOutput, irSpectrum, pan;
 
-					(conversationBuf.numFrames / s.sampleRate).wait;
+					irSpectrum = ~prepConvolve.(irBuffer.normalize, ~convolveFftsize);
+
+					s.sync;
+
+					pan = (1 / (~numEnvironments - 1)).clip(0.0, 1.0) * index;
+					whichOutput = [0, 1].choose;
+					// whichOutput = 1;
+					whichBus = [~mixerBus, ~exciterBus[[0, 1].choose]].choose;
+					// whichOutput.postln;
+
+					playBack = Synth(\speechConvolve, [\irBuffer, irSpectrum, \fftSize, ~convolveFftsize, \mixerBus, ~mixerBus, \transducerBus, whichBus,  \audioBuffer, conversationBuf, \compressThresh, ~speechCompressThresh, \ampBus, ~conversationVolume, \convolveMix, ~conversationConvMix, \pan, pan, \transPan, [-1, 1].choose, \convolveAmp, ~convolveAmp, \select, whichOutput], target: ~convolveGrp );
+
+					convoBufLength.wait;
 
 					~conversationIsPlaying = false;
 					1.0.wait;
+					playBack.free;
 					irSpectrum.free;
 				};
+
+				if (~pauseIRwhileConvProb.coin, {
+					(convoBufLength * 0.9).wait};
+				);
+
 			}.play;
 		});
 	});
@@ -576,13 +596,11 @@ SynthDef(\bufPlay,
 		// Average the difference between the environments spectral centroid and the ir spectral centroid over 1-second windows
 		distance = AverageOutput.kr(((spectralShape - envSpecCentroidBus) / nyquist).clip(-1.0, 1.0).squared, Impulse.kr(1));
 		// Sample and hold the average of the distance between the spectral centroid of the individual to the environment (Average of 1 second);
-		// In.kr(envCentAvgBus).poll;
 		distance = Latch.kr(distance, DelayN.kr(Impulse.kr(0), 1, 1.0));
 		// Sample and hold the difference between the average of a short(er) of the environment and the average of the last 10 seconds of the environment. Gives an estimate of the impulse responses impact on the environment. "slicepoint" refers to the slice point identified by running FluCoMa's novelty slicer on the spectrum of the ir buffer
 		averageTrig = DelayN.kr(Impulse.kr(0), slicePoint, slicePoint);
 		specCentAvg = AverageOutput.kr(envSpecCentroidBus, averageTrig);
 		specCentAvg = Latch.kr(((specCentAvg - envSpecCentroidAvgBus) / nyquist).squared, averageTrig);
-		// source = PanX.ar(~numEnvironments, source, panPos).scope;
 		source = PanAz.ar(~numEnvironments, source, panPos, orientation: 0.0);
 		Out.kr(specCentAvgBus, specCentAvg);
 		// Out.kr(~specCentBus, spectralShapeAvg);
@@ -597,6 +615,14 @@ SynthDef(\mixer,
 		source = Limiter.ar(source, 0.9);
 		Out.ar(~mainOut, (source * In.kr(amp).lag(0.1)));
 		Out.ar(~toBlackhole, source);
+}).add;
+
+SynthDef(\transducerMixer,
+	{|numChans, amp|
+		var source;
+		source = LeakDC.ar(In.ar(~exciterBus));
+		source = Limiter.ar(source, 0.9);
+		Out.ar(~exciterOut, (source * In.kr(amp).lag(0.1)));
 }).add;
 
 SynthDef(\soundIn,
@@ -647,8 +673,10 @@ SynthDef(\rec,
 
 		if (((1.0 / size) * ~conversationProb).coin, {
 			var buf = conversationBuffers.choose.choose;
+			// waitTime = buf.numFrames / s.sampleRate;
+			~conversationConvMix.set([-1, 0, 1].choose);
 			s.sync;
-			~playConversation.(buffers[i], buf, index)
+			~playConversation.(buffers[i], buf, index);
 		});
 
 		waitTime.wait;
@@ -679,18 +707,20 @@ SynthDef(\simpleBufPlay,
 };
 
 SynthDef(\speechConvolve,
-	{|irBuffer, fftSize, audioBuffer, fadeTime = 2, gate = 1, mixerBus, convolveMix, compressThresh = 0.01, pan = 0, ampBus|
-		var source, convolution, out, env;
+	{|irBuffer, fftSize, audioBuffer, fadeTime = 2, gate = 1, mixerBus, transducerBus, convolveMix, compressThresh = 0.01, pan = 0, ampBus, convolveAmp, select, transPan = 0|
+		var source, convolution, out, env, outTransducer, outMixer;
 		source = PlayBuf.ar(1, audioBuffer);
 		env = EnvGen.kr(Env.asr(fadeTime, releaseTime: fadeTime), gate, doneAction: 2);
-		convolution = PartConv.ar(source, fftSize, irBuffer);
-		out = XFade2.ar(source, convolution, In.kr(convolveMix));
+		convolution = PartConv.ar(source, fftSize, irBuffer).sanitize;
+		out = XFade2.ar(source, convolution * In.kr(convolveAmp).lag(0.1), In.kr(convolveMix).lag(0.2).scope);
 		out = Compander.ar(out, out, thresh: compressThresh,
 			slopeBelow: 1,
 			slopeAbove: 0.5,
 			clampTime:  0.02,
 			relaxTime:  0.1);
-		out = Limiter.ar(out, 0.9);
-		out = PanX.ar(~numEnvironments, out * In.kr(ampBus), pan);
-		Out.ar(mixerBus, out * env);
+		out = Limiter.ar(out, 0.9).scope;
+		outMixer = PanX.ar(~numEnvironments, out * (1 - select) * In.kr(ampBus), pan);
+		outTransducer = Pan2.ar(out * select, transPan);
+		Out.ar(mixerBus, outMixer * env);
+		Out.ar(transducerBus, outTransducer * env);
 }).add;
