@@ -395,14 +395,14 @@
 			// Update already existing signals with mutations, etc.
 			modIDs.do{|i|
 				if (i < (newSigs.size - 1), {
-					newSigs[i] = ~newGeneration.(newGen[cycleGenInd][i], ~rfftParams[2], ~audioEnv);
+					newSigs[i] = ~newGeneration.(newGen[cycleGenInd][i], ~rfftParams[2], ~audioEnv, ~audioEnvelopeOn);
 				});
 			};
 
 			numNewIndividuals.collect{|i|
 				var idx, newIndividual;
 				idx = newGen[cycleGenInd].size - numNewIndividuals + i;
-				newIndividual = ~newGeneration.(newGen[cycleGenInd][idx], ~rfftParams[2], ~audioEnv);
+				newIndividual = ~newGeneration.(newGen[cycleGenInd][idx], ~rfftParams[2], ~audioEnv, ~audioEnvelopeOn);
 				newSigs.add(newIndividual);
 			};
 
@@ -508,8 +508,7 @@
 				s.sync;
 			};
 
-			~playConversation.(newBufs[cycleGenInd].choose, ~conversationBuffers.choose.choose, popIndex);
-
+			if (~feedback, {
 			if (genCounter > 5, {
 				if (1.0.coin, {
 					// "New convolution spectrum".postln;
@@ -530,11 +529,12 @@
 					s.sync;
 
 					"Change feedback pop %".format(popIndex).postln;
-					convolveBuf.postln;
+					// convolveBuf.postln;
 
 					pebble = ~xFadeFbConvolve.(convolveBuf, feedbackSynths, ~convolveFftsize, pebble, 2, popIndex, ~feedbackThreshBus[popIndex], ~numEnvironments);
 				});
 
+			});
 			});
 
 			s.sync;
