@@ -2,7 +2,7 @@ s.options.memSize_(2.pow(20));
 s.options.sampleRate_(48000);
 s.options.numInputBusChannels_(6);
 s.options.numOutputBusChannels_(40);
-s.options.hardwareBufferSize = 128;
+s.options.hardwareBufferSize = 256;
 s.recHeaderFormat = "wav";
 s.options.numBuffers = 4096 * 2;
 
@@ -35,6 +35,12 @@ s.options.inDevice_(
 
 MIDIIn.connectAll;
 
+// Open UDP ports for OSC messages from sensors
+~numSensors.do{|i|
+	thisProcess.openUDPPort(3334 + i)};
+
+~netAddresses = ~numSensors.collect{|i| NetAddr(~oscAddresses[i], ~udpPort + i)};
+
 s.waitForBoot{
 
 	~nyquist = s.sampleRate / 2;
@@ -50,11 +56,15 @@ s.waitForBoot{
 
 	s.sync;
 
+	"OSC.scd".loadRelative;
+
 	"Functions.scd".loadRelative;
 
 	s.sync;
 
-	~objPath = "/Users/adammac2023/Documents/Musik-business/Adam/2024/Speculative Sound Synthesis/Code_27.07.2024/Impulse_responses/";
+/*	~objPath = "/Users/adammac2023/Documents/Musik-business/Adam/2024/Speculative Sound Synthesis/Code_27.07.2024/Impulse_responses/";*/
+
+		~objPath = "/Users/adammac2023/Documents/Musik-business/Projects/Queer Sonic Fingerprint/Audio/Impulse_Responses/QSF_ALB/";
 
 	~museumPath = "/Users/adammac2023/Documents/Musik-business/Projects/Queer Sonic Fingerprint/Audio/Museum Audio/";
 
@@ -97,6 +107,7 @@ s.waitForBoot{
 	s.sync;
 
 	Synth(\mixer, [\amp, ~masterVol], target: ~mixerGrp);
+	Synth(\transducerMixer, [\amp, ~masterVol], target: ~mixerGrp);
 
 	s.sync;
 
