@@ -19,6 +19,10 @@
 
 ~spectralEnvelopeOn = false; // For attenuating the high frequencies of the spectrum
 
+~audioEnvelopeOn = false; // For attenuating the high frequencies of the spectrum
+
+~pauseIRwhileConvProb = 0.5;
+
 ~ancestorReturn = true;
 ~ancestorReturnProb = 0.07;
 // Fitness Variables. For balancing the parameters contributing to calculating the fitness function
@@ -28,7 +32,7 @@
 ~distanceModerator = 0; // If using the lower distance to the spectral centroid. Currently not in use
 
 // The width of the snippet of the environments spectrum that will be inserted into an individual. 0 is nothing, 1 equals the entire range between cut point and the next value on the bark scale
-~envInsertWidth = 0.1;
+~envInsertWidth = 0.2;
 
 ~envRecLength = 2;
 
@@ -56,7 +60,7 @@
 
 ~micInStereo = [0, 1];
 
-~bufPlayMaxWaitTime = 1.5;
+~bufPlayMaxWaitTime = 2;
 
 ~numEnvironments = 4;
 
@@ -74,9 +78,22 @@
 
 ~conversationIsPlaying = false;
 
-~conversationProb = 0.5;
+~conversationProb = 1;
 
 ~speechCompressThresh = 0.01;
+
+~numExciters = 2;
+
+~exciterOut = ~numEnvironments;
+
+~numSensors = 4;
+
+~numSensorVals = 6;
+
+~udpPort = 3334;
+
+~feedback = false;
+
 
 
 
