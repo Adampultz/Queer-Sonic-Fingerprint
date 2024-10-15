@@ -15,3 +15,8 @@
 ~variancePlot = List(0);
 
 ~conversationBuffers = [].asList;
+
+~oscAddresses = ["192.168.1.24", "192.168.1.20", "192.168.1.23", "192.168.1.18"];
+
+~sensorMax = ~numSensors.collect{|i| ~numSensorVals.collect{0}};
+~sensorMin = ~numSensors.collect{|i| ~numSensorVals.collect{0}};
