@@ -1,6 +1,9 @@
 MIDIFunc.trace(true);
 MIDIFunc.trace(false);
 
+OSCFunc.trace(true);
+OSCFunc.trace(false);
+
 s.plotTree;
 
 "Main.scd".loadRelative; // Evaluate me
@@ -29,13 +32,14 @@ s.plotTree;
 
 (
 ~numEnvironments.collect{|i|
-	~irVolume[i].set(0.8);
-	~feedbackVol[i].set(0.3);
+	~irVolume[i].set(0.3);
+	~feedbackVol[i].set(0.0);
 	~feedbackThreshBus[i].set(0.01);
 	~convolveMix[i].set(0.5);
-	~envirIrAmpBus[i].set(0.4);
-	~conversationVolume.set(0.5);
-	~conversationConvMix.set(0)
+	~envirIrAmpBus[i].set(0.1);
+	~conversationVolume.set(1);
+	~conversationConvMix.set(1);
+	~convolveAmp.set(0.5);
 });
 
 (
