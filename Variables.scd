@@ -60,7 +60,7 @@
 
 ~micInStereo = [0, 1];
 
-~bufPlayMaxWaitTime = 2;
+~bufPlayMaxWaitTime = 1.7;
 
 ~numEnvironments = 4;
 
@@ -92,7 +92,9 @@
 
 ~udpPort = 3334;
 
-~feedback = false;
+~feedback = true;
+
+~oscMinMaxTrace = true;
 
 
 
