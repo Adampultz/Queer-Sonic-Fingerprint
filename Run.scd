@@ -33,14 +33,16 @@ s.plotTree;
 (
 ~numEnvironments.collect{|i|
 	~irVolume[i].set(0.3);
-	~feedbackVol[i].set(0.0);
-	~feedbackThreshBus[i].set(0.01);
-	~convolveMix[i].set(0.5);
+	~feedbackVol[i].set(0.9);
+	~feedbackThreshBus[i].set(0.02);
+	~convolveMix[i].set(1);
 	~envirIrAmpBus[i].set(0.1);
 	~conversationVolume.set(1);
-	~conversationConvMix.set(1);
-	~convolveAmp.set(0.5);
-});
+	~conversationConvMix.set(-1);
+};
+~convolveAmp.set(0.1);
+	~speechCompressThresh = 0.01;
+);
 
 (
 ~adultAge = 5;
