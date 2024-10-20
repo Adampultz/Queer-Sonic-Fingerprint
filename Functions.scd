@@ -480,13 +480,13 @@
 // Zero the phase. Doesn't seem to work properly. Look at linear phase
 ~zeroPhase = {|item|
 	var polar, newComplex, size;
-	size = item.real.size;
+	// size = item.real.size;
 	polar = item.asPolar;
 
 	size.do{|i|
 		polar.theta[i] = 0.0};
 
-	newComplex = polar.polarToComplexSignal
+	newComplex = polar.polarToComplexSignal;
 };
 
 ~counter = {|pebbleCounter, maxCount|
@@ -535,7 +535,7 @@
 				FluidBufCompose.processBlocking(s, audioBuf, startChan: 1, numChans: 1,  destination: monoBuf, destGain: -6.dbamp);
 				audioBuf = monoBuf;
 			});
-			audioBuf
+			audioBuf.normalize;
 		};
 	};
 };
@@ -554,19 +554,22 @@
 				s.sync;
 
 				1.do{
-					var playBack, whichBus, whichOutput, irSpectrum, pan;
+					var playBack, whichBus, whichOutput, irSpectrum, pan, whichFilter;
 
 					irSpectrum = ~prepConvolve.(irBuffer.normalize, ~convolveFftsize);
 
 					s.sync;
 
-					pan = (1 / (~numEnvironments - 1)).clip(0.0, 1.0) * index;
+					pan = (1.0 / (~numEnvironments - 1)).clip(0.0, 1.0) * (index / (~numEnvironments - 1));
+					"Pan: %".format(pan).postln;
 					whichOutput = [0, 1].choose;
 					// whichOutput = 1;
-					whichBus = [~mixerBus, ~exciterBus[[0, 1].choose]].choose;
+					whichBus = [~mixerBus, ~exciterBus[[0, 1].choose]][whichOutput];
 					// whichOutput.postln;
 
-					playBack = Synth(\speechConvolve, [\irBuffer, irSpectrum, \fftSize, ~convolveFftsize, \mixerBus, ~mixerBus, \transducerBus, whichBus,  \audioBuffer, conversationBuf, \compressThresh, ~speechCompressThresh, \ampBus, ~conversationVolume, \convolveMix, ~conversationConvMix, \pan, pan, \transPan, [-1, 1].choose, \convolveAmp, ~convolveAmp, \select, whichOutput], target: ~convolveGrp );
+					whichFilter = [~conversationConvMix, ~cleanFilterBus].choose;
+
+					playBack = Synth(\speechConvolve, [\irBuffer, irSpectrum.bufnum, \fftSize, ~convolveFftsize, \mixerBus, ~mixerBus, \transducerBus, whichBus,  \audioBuffer, conversationBuf, \compressThresh, ~speechCompressThresh, \ampBus, ~conversationVolume, \convolveMix, whichFilter, \pan, pan, \transPan, [-1, 1].choose, \convolveAmp, ~convolveAmp, \select, whichOutput], target: ~convolveGrp );
 
 					convoBufLength.wait;
 
@@ -574,11 +577,15 @@
 					1.0.wait;
 					playBack.free;
 					irSpectrum.free;
+					s.sync;
 				};
 
-				if (~pauseIRwhileConvProb.coin, {
-					(convoBufLength * 0.9).wait};
-				);
+/*				if (~pauseIRwhileConvProb.coin, {
+					"pause playback while conversation: %".format(convoBufLength * 0.9).postln;
+					(convoBufLength * 0.9).wait;
+					"resume playback".postln
+				};
+				);*/
 
 			}.play;
 		});
@@ -589,7 +596,7 @@
 SynthDef(\bufPlay,
 	{|buf, panPos, index, slicePoint, envirSpectralShape, specCentAvgBus, envCentAvgBus, distanceBus, mixerBus, nyquist, volume, windowSize, chans|
 		var source, spectralShape, distance, averageTrig, specCentAvg, envSpecCentroidBus, envSpecCentroidAvgBus;
-		source = PlayBuf.ar(1, buf, doneAction: 2);
+		source = PlayBuf.ar(1, buf, doneAction: 2).sanitize;
 		envSpecCentroidBus = In.kr(envirSpectralShape); // Spectral centroid measured by microphones
 		envSpecCentroidAvgBus = In.kr(envCentAvgBus);
 		spectralShape = FluidSpectralShape.kr(source, select: [\centroid], windowSize: windowSize);
@@ -638,17 +645,18 @@ SynthDef(\soundIn,
 }).add;
 
 SynthDef(\feedBack,
-	{|irBuffer, fftSize, fadeTime = 2, gate = 1, mixerBus, feedbackVol, convolveMix, micChan, thresHoldBus, pan|
+	{|irBuffer, fftSize, fadeTime = 2, gate = 1, mixerBus, feedbackVol, convolveMix, micChan, thresHoldBus, pan, amBus, sensorAmp|
 		var source, convolution, out, amplitude, ampSel, env;
 		source = LeakDC.ar(SoundIn.ar(micChan));
 		amplitude = RMS.kr(source * 10, 10).clip(0.0, 1.0);
 		env = EnvGen.kr(Env.asr(fadeTime, releaseTime: fadeTime), gate, doneAction: 2);
 		convolution = LeakDC.ar(PartConv.ar(source, fftSize, irBuffer)).sanitize;
 		out = XFade2.ar(source, convolution, In.kr(convolveMix));
+		out = LPF.ar(out, 6000);
 		out = Compander.ar(out, out, In.kr(thresHoldBus), slopeAbove: 0.5);
 		out = Limiter.ar(out, 0.9);
-		out = PanX.ar(~numEnvironments, out, pan);
-		Out.ar(mixerBus, (out * In.kr(feedbackVol)) * (1.0 - amplitude).clip(0.0, 1.0) * env);
+		out = PanX.ar(~numEnvironments, out, pan) * SinOsc.kr(In.kr(amBus), 0, 0.5, 0.5);
+		Out.ar(mixerBus, (out * In.kr(feedbackVol) * In.kr(sensorAmp)) * (1.0 - amplitude).clip(0.0, 1.0) * env);
 }).add;
 
 SynthDef(\rec,
@@ -666,19 +674,22 @@ SynthDef(\rec,
 	var size = buffers.size;
 	var scrambleArray = Array.fill(size, {|i| i}).scramble;
 	scrambleArray.do({|i|
-		var waitTime = (1.0 / size).rrand(maxWait).pow(2) * numSpeakers.sqrt;
+		var waitTime = (1.0 / size).rrand(maxWait).pow(2).clip(0.1, maxWait.pow(2)) * ~numspeakerSqrt;
 		// var waitTime = (1.0 / size).rrand(maxWait).pow(2);
-		var pan = ((2.0 / numSpeakers).rand - (1 / numSpeakers)) + ((2.0 / numSpeakers) * index);
-		Synth(\bufPlay, [\buf, buffers[i], \panPos, pan, \slicePoint, slicePoints[i] / s.sampleRate, \specCentAvgBus, ~specCentAvgBus[index][i], \envCentAvgBus, ~envCentAvg[index], \envirSpectralShape, ~envCent[index], \distanceBus, ~distanceBus[index][i], \mixerBus, ~mixerBus, \nyquist, ~nyquist, \volume, ~irVolume[index], \windowSize, 2048, \numChans, numSpeakers], target: ~synthGrp);
+		var pan = (0.5.rand - 0.25) + (0.5 * index);
+		var buffer = buffers[i];
 
+		if (buffer != nil, {
+		Synth(\bufPlay, [\buf, buffer, \panPos, pan, \slicePoint, slicePoints[i] / s.sampleRate, \specCentAvgBus, ~specCentAvgBus[index][i], \envCentAvgBus, ~envCentAvg[index], \envirSpectralShape, ~envCent[index], \distanceBus, ~distanceBus[index][i], \mixerBus, ~mixerBus, \nyquist, ~nyquist, \volume, ~irVolume[index], \windowSize, 2048, \numChans, numSpeakers], target: ~synthGrp);
+
+		if (~conversationIsPlaying.not, {
 		if (((1.0 / size) * ~conversationProb).coin, {
 			var buf = conversationBuffers.choose.choose;
-			// waitTime = buf.numFrames / s.sampleRate;
-			~conversationConvMix.set([-1, 0, 1].choose);
 			s.sync;
-			~playConversation.(buffers[i], buf, index);
+			~playConversation.(buffer, buf, index);
 		});
-
+		});
+		}, {"Buffer in pop % is nil".format(index)});
 		waitTime.wait;
 	});
 };
@@ -702,25 +713,46 @@ SynthDef(\simpleBufPlay,
 	fbSynths[pebbleCounter].set(\gate, 0);
 	s.sync;
 	pebbleCounter = (pebbleCounter + 1) % 2;
-	fbSynths[pebbleCounter] = Synth(\feedBack, [\irBuffer, spectrum.bufnum, \fftSize, fftSize, \mixerBus, ~mixerBus, \feedbackVol, ~feedbackVol[index], \convolveMix, ~convolveMix[index], \micChan, index, \thresHoldBus, thrBus, \pan, pan], target: ~convolveGrp);
+	fbSynths[pebbleCounter] = Synth(\feedBack, [\irBuffer, spectrum.bufnum, \fftSize, fftSize, \mixerBus, ~mixerBus, \feedbackVol, ~feedbackVol[index], \convolveMix, ~convolveMix[index], \micChan, index, \thresHoldBus, thrBus, \pan, pan, \amBus, ~feedbackAMfreq[index], \sensorAmp, ~feedbackSensorAmp[index]], target: ~convolveGrp);
 	pebbleCounter;
 };
 
 SynthDef(\speechConvolve,
 	{|irBuffer, fftSize, audioBuffer, fadeTime = 2, gate = 1, mixerBus, transducerBus, convolveMix, compressThresh = 0.01, pan = 0, ampBus, convolveAmp, select, transPan = 0|
 		var source, convolution, out, env, outTransducer, outMixer;
-		source = PlayBuf.ar(1, audioBuffer);
+		source = LeakDC.ar(PlayBuf.ar(1, audioBuffer));
 		env = EnvGen.kr(Env.asr(fadeTime, releaseTime: fadeTime), gate, doneAction: 2);
 		convolution = PartConv.ar(source, fftSize, irBuffer).sanitize;
-		out = XFade2.ar(source, convolution * In.kr(convolveAmp).lag(0.1), In.kr(convolveMix).lag(0.2).scope);
+		convolution = HPF.ar(convolution, 50);
+		convolution = LPF.ar(convolution, 8000);
+		out = XFade2.ar(source, convolution * In.kr(convolveAmp).lag(0.1), In.kr(convolveMix).lag(0.2));
 		out = Compander.ar(out, out, thresh: compressThresh,
 			slopeBelow: 1,
 			slopeAbove: 0.5,
 			clampTime:  0.02,
 			relaxTime:  0.1);
-		out = Limiter.ar(out, 0.9).scope;
-		outMixer = PanX.ar(~numEnvironments, out * (1 - select) * In.kr(ampBus), pan);
+		out = Limiter.ar(out, 0.9);
+		outMixer = PanX.ar(~numEnvironments, out * (1 - select) * In.kr(ampBus), Select.kr(1, [ DC.kr(pan), Wrap.kr(SinOsc.kr(In.kr(~convPanBus), pi / 2, 0.5, 0.5) + pan) ]));
 		outTransducer = Pan2.ar(out * select, transPan);
 		Out.ar(mixerBus, outMixer * env);
 		Out.ar(transducerBus, outTransducer * env);
 }).add;
+
+SynthDef(\sensor0, {
+	Out.kr(~conversationConvMix, ((~gyroBus[0][1].kr * 2) - 1.0));
+	Out.kr(~feedbackAMfreq[0], LinExp.kr(~gyroBus[0][1].kr, 0.0, 1.0, 0.01, 200))}).add;
+
+SynthDef(\sensor1, {
+	var acc, trig;
+	acc = OnePole.kr(~gyroBus[1][0].kr);
+	acc = (DelayN.kr(acc, 0.1, 0.1) - acc).abs;
+	trig = acc > 0.035;
+	Out.kr(~convPanBus, OnePole.kr(Select.kr(trig, [0, acc]), 0.9));
+	Out.kr(~feedbackAMfreq[1], LinExp.kr(~gyroBus[1][1].kr, 0.0, 1.0, 0.01, 200))}).add;
+
+SynthDef(\sensor2, {
+	Out.kr(~feedbackAMfreq[2], LinExp.kr(~gyroBus[2][1].kr, 0.0, 1.0, 0.01, 200))}).add;
+
+SynthDef(\sensor3, {
+	Out.kr(~feedbackAMfreq[3], LinExp.kr(~gyroBus[3][1].kr, 0.0, 1.0, 0.01, 200))}).add;
+
