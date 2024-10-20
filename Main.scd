@@ -2,7 +2,9 @@ s.options.memSize_(2.pow(20));
 s.options.sampleRate_(48000);
 s.options.numInputBusChannels_(6);
 s.options.numOutputBusChannels_(40);
-s.options.hardwareBufferSize = 256;
+s.options.hardwareBufferSize = 512;
+s.options.maxSynthDefs = 2048;
+s.options.maxNodes = 2048;
 s.recHeaderFormat = "wav";
 s.options.numBuffers = 4096 * 2;
 
@@ -31,7 +33,12 @@ s.options.inDevice_(
 	//"Komplete Audio 6"
 );
 
+~nyquist = s.options.sampleRate / 2;
+
 "Variables.scd".loadRelative;
+
+"Arrays.scd".loadRelative;
+
 
 MIDIIn.connectAll;
 
@@ -42,10 +49,7 @@ MIDIIn.connectAll;
 ~netAddresses = ~numSensors.collect{|i| NetAddr(~oscAddresses[i], ~udpPort + i)};
 
 s.waitForBoot{
-
-	~nyquist = s.sampleRate / 2;
-
-	"Arrays.scd".loadRelative;
+	"Server booted".postln;
 
 	~envGrp = Group.new;
 	~synthGrp = Group.new(~envGrp, \addAfter);
@@ -62,19 +66,29 @@ s.waitForBoot{
 
 	s.sync;
 
-/*	~objPath = "/Users/adammac2023/Documents/Musik-business/Adam/2024/Speculative Sound Synthesis/Code_27.07.2024/Impulse_responses/";*/
+	~accRest.do{|i, k|
+		3.do{|n|
+			i[n] = ~accBus[k][n].getSynchronous;
+	}};
 
-		~objPath = "/Users/adammac2023/Documents/Musik-business/Projects/Queer Sonic Fingerprint/Audio/Impulse_Responses/QSF_ALB/";
+	/*	~objPath = "/Users/adammac2023/Documents/Musik-business/Adam/2024/Speculative Sound Synthesis/Code_27.07.2024/Impulse_responses/";*/
+
+	~objPath = "/Users/adammac2023/Documents/Musik-business/Projects/Queer Sonic Fingerprint/Audio/Impulse_Responses/QSF_ALB/";
 
 	~museumPath = "/Users/adammac2023/Documents/Musik-business/Projects/Queer Sonic Fingerprint/Audio/Museum Audio/";
 
 	~test = PathName(~objPath).files.do{|i|};
 
-	~conversationBuffers = ~readFolderOfFolders.(~museumPath);
+	~numspeakerSqrt = ~numEnvironments.sqrt;
 
+	"Initialising conversation buffers".postln;
+	~conversationBuffers = ~readFolderOfFolders.(~museumPath);
 	s.sync;
+	"Conversation buffers initialised".postln;
 
 	~parentBuffers = ~test.size.collect{|i| Signal.read(~test[i].fullPath)};
+
+	~cutPoints = [0, 20, 28, 36, 44];
 
 	~maximumSize = ~parentBuffers.maxCollectionSize;
 
@@ -88,7 +102,7 @@ s.waitForBoot{
 
 	~parentFreqResp = ~parentBuffers.size.collect{|i|
 		~freqResponse.(~parentBuffers[i], ~rfftParams[0], ~rfftParams[2]);
-	};
+	}.scramble;
 
 	~parentFreqResp.do{|i|
 		i.real.normalizeMagnitude};
@@ -109,6 +123,10 @@ s.waitForBoot{
 	Synth(\mixer, [\amp, ~masterVol], target: ~mixerGrp);
 	Synth(\transducerMixer, [\amp, ~masterVol], target: ~mixerGrp);
 
+	~synthSensor0 = Synth(\sensor0, target: ~envGrp);
+	~synthSensor1 = Synth(\sensor1, target: ~envGrp);
+	~synthSensor2 = Synth(\sensor2, target: ~envGrp);
+	~synthSensor3 = Synth(\sensor3, target: ~envGrp);
 	s.sync;
 
 	"Populations.scd".loadRelative;
@@ -125,18 +143,17 @@ s.waitForBoot{
 
 	"Initialise populations".postln;
 	// Initialise the first and so far, only community
-	~populations.(0, ~newSigs[0], ~parentFreqResp.asList);
+	~populations.(0, ~newSigs[0][~cutPoints[0]..(~cutPoints[1] -1 )], ~parentFreqResp.asList[~cutPoints[0]..(~cutPoints[1] -1 )]);
 	"One".postln;
 	s.sync;
-/*	~populations.(1, ~newSigs[0], ~parentFreqResp.asList);
+	/*	~populations.(1, ~newSigs[0], ~parentFreqResp.asList);
 	"Two".postln;
-		s.sync;
+	s.sync;
 	~populations.(2, ~newSigs[0], ~parentFreqResp.asList);
 	"Three".postln;
-		s.sync;
+	s.sync;
 	~populations.(3, ~newSigs[0], ~parentFreqResp.asList);
 	"Four".postln;*/
 
 	"Done".postln;
-	};
-	
+};
