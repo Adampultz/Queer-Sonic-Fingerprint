@@ -11,6 +11,10 @@
 ~gyroBus = ~numSensors.collect{|i| 3.collect{ Bus.control(s)}};
 ~accBus = ~numSensors.collect{|i| 3.collect{ Bus.control(s)}};
 
+~feedbackAMfreq = ~numSensors.collect{|i| Bus.control(s).set(0.1)};
+
+~feedbackSensorAmp = ~numSensors.collect{|i| Bus.control(s).set(1)};
+
 ~conversationVolume = Bus.control(s);
 
 ~conversationConvMix = Bus.control(s).set(0);
@@ -18,6 +22,12 @@
 ~masterVol = Bus.control(s); // 0 -1. Master volume. NanoKontrol: slider 1
 
 ~convolveAmp = Bus.control(s).set(0.5); // 0 -1. Master volume. NanoKontrol: slider 1
+
+~mutationProbMultiply = Bus.control(s).set(1); // 0 -1. Master volume. NanoKontrol: slider 1
+
+~convPanBus = Bus.control(s).set(0); // 0 -1. Master volume. NanoKontrol: slider 1
+
+~cleanFilterBus = Bus.control(s).set(-1);
 
 // Analysis busses
 
