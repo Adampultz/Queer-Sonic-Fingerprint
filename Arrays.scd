@@ -20,3 +20,5 @@
 
 ~sensorMax = ~numSensors.collect{|i| ~numSensorVals.collect{0}};
 ~sensorMin = ~numSensors.collect{|i| ~numSensorVals.collect{0}};
+
+~accRest = ~numSensors.collect{|i| 3.collect{0}};
