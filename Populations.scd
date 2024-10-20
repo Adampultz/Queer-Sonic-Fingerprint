@@ -18,13 +18,19 @@
 
 	s.sync;
 
+	if (~feedback, {
 	convolveSpectrum = ~prepConvolve.(initConvolveBuf, ~convolveFftsize).normalize;
+	});
 
 	s.sync;
 
 	inSynth = Synth(\soundIn, [\audioIn, popIndex, \envCentAvg, ~envCentAvg[popIndex], \envCent, ~envCent[popIndex], \envSpread, ~envSpread[popIndex]], target: ~envGrp);
 
-	feedbackSynths[0] = Synth(\feedBack, [\irBuffer, convolveSpectrum.bufnum, \fftSize, ~convolveFftsize, \feedbackVol, ~feedbackVol[popIndex], \convolveMix, ~convolveMix[popIndex], \micChan, popIndex, \thresHoldBus, ~feedbackThreshBus, \pan, ((1 / ~numEnvironments) * popIndex)], target: ~convolveGrp);
+	s.sync;
+
+	if (~feedback, {
+	feedbackSynths[0] = Synth(\feedBack, [\irBuffer, convolveSpectrum.bufnum, \fftSize, ~convolveFftsize, \feedbackVol, ~feedbackVol[popIndex], \convolveMix, ~convolveMix[popIndex], \micChan, popIndex, \thresHoldBus, ~feedbackThreshBus, \pan, ((1 / ~numEnvironments) * popIndex), \amBus, ~feedbackAMfreq[popIndex], \sensorAmp, ~feedbackSensorAmp[popIndex]], target: ~convolveGrp);
+	});
 
 	s.sync;
 
@@ -191,9 +197,12 @@
 						if (ghostsFR.size >= ~newGenPopSize, {
 							var nextPopIndex = (popIndex + 1);
 
+							~oscMinMaxTrace = false;
+
 							"New Population: %!".format(nextPopIndex).postln;
 
-							~populations.(nextPopIndex, ghostsIR, ghostsFR);
+							~populations.(nextPopIndex, ghostsIR ++ ~newSigs[0][~cutPoints[nextPopIndex]..(~cutPoints[nextPopIndex + 1] -1 )], ghostsFR ++ ~parentFreqResp.asList[~cutPoints[nextPopIndex]..(~cutPoints[nextPopIndex + 1] -1 )]);
+							s.sync;
 							~tasks[nextPopIndex].start;
 							nextPop = 1;
 
@@ -318,8 +327,9 @@
 			});
 
 			if (~mutationOn == true, {
+				var mutationProb = (1.0 / newGen[cycleGenInd].size) * ~mutationProbMultiply.getSynchronous;
 				newGen[cycleGenInd].size.do{
-					if ((1.0 / newGen[cycleGenInd].size).coin == true, {
+					if (mutationProb.coin, {
 						var which = newGen[cycleGenInd].size.rand;
 						var gainMod = 0.2.rrand(0.8); // Gain modification factor (0 - 1)
 						newGen[cycleGenInd][which] = ~mutationRho.(newGen[cycleGenInd][which], ~mutationWidth, gainMod);
@@ -350,7 +360,7 @@
 					var which = newGen[cycleGenInd].size.rand;
 					newGen[cycleGenInd][which] = ~zeroPhase.(newGen[cycleGenInd][which]);
 					if (modIDs.indicesOfEqual.(which) == nil, {modIDs.add(which)});
-					// "Zero phases on %".format(which).postln;
+					"Zero phases on %".format(which).postln;
 				});
 			});
 
@@ -366,6 +376,7 @@
 					});
 					if (modIDs.indicesOfEqual.(which) == nil, {modIDs.add(which)});
 				});
+				s.sync;
 			});
 
 			if (~spectralEnvelopeOn == true,{
@@ -485,6 +496,8 @@
 				// Identify slice points for measuring spectral centroid
 				slice = newBufs[cycleGenInd][i].ampSlice(s, windowSize: 2048);
 
+				s.sync;
+
 				// Store slicepoints for use in real-time centroid detection
 				slice.get(1, {|msg|
 					if (i >= slicePointArray.size, {
@@ -505,6 +518,7 @@
 				s.sync;
 
 				featureBuffersGeno[i].loadToFloatArray(action: {|array| spectralCentroidGeno[i] = array.asArray.mean});
+
 				s.sync;
 			};
 
@@ -519,16 +533,18 @@
 
 
 
-					if (environment[0] != nil, {
+			/*		if (environment[0] != nil, {
 						if (environment[0].numFrames == ~rfftParams[0], {
 							convolveBuf = [newBufs[cycleGenInd].choose, environment[0]].choose;
 						}, {convolveBuf = newBufs[cycleGenInd].choose});
 					}, {
 						convolveBuf = newBufs[cycleGenInd].choose});
+*/
+						convolveBuf = newBufs[cycleGenInd].choose;
 
-					s.sync;
+						s.sync;
 
-					"Change feedback pop %".format(popIndex).postln;
+						// "Change feedback pop %".format(popIndex).postln;
 					// convolveBuf.postln;
 
 					pebble = ~xFadeFbConvolve.(convolveBuf, feedbackSynths, ~convolveFftsize, pebble, 2, popIndex, ~feedbackThreshBus[popIndex], ~numEnvironments);
@@ -545,12 +561,15 @@
 
 			s.sync;
 
-			"Get busses for generation %".format(popIndex).postln;
+			// "Get busses for generation %".format(popIndex).postln;
 
 			newBufs[cycleGenInd].size.do({|i|
 				if(i < spectralCentroidDevPheno.size, {
-					spectralCentroidDevPheno[i] = ~specCentAvgBus[popIndex][i].getSynchronous},{
-					spectralCentroidDevPheno.add(~specCentAvgBus[popIndex][i].getSynchronous)
+					spectralCentroidDevPheno[i] = ~specCentAvgBus[popIndex][i].getSynchronous;
+					s.sync;
+				},{
+					spectralCentroidDevPheno.add(~specCentAvgBus[popIndex][i].getSynchronous);
+					s.sync;
 				});
 			});
 
