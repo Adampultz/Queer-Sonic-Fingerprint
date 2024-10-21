@@ -1,6 +1,10 @@
 <h1> Queer Sonic Fingerprint </h1>
 <h2> Code for the sound installation <em> Queer Sonic Fingerprint</em> </h2>
 
+This repository contains the code base for the sound installation <em> Queer Sonic Fingerprint </em> (QSF). QSF is a collaboration between Isabel Bredenbröker and Adam Pultz Melbye. The code is written by Adam Pultz.
+
+This code is based around an evolutionary algorithm that takes frequency responses as its genome. The code introduces several novel evolutionary techniques, some of which are covered in the paper presentation Adam Pultz gave at the Speculative Sound Synthesis Symposium in Graz, September 2024: https://speculativesoundsynthesis.iem.sh/symposium/docs/proceedings/pultz/
+
 Familiarity with SuperCollider is assumed.
 
 <h3> Dependencies:</h3>
@@ -35,3 +39,9 @@ Once SC reports "Done", evaluate `~masterVol.set(1);` and the block of code in p
 Finally, evaluate `~tasks[0].start;` to start the playback.
 
 During playback, you can enable and disable processes, as well as adjust variables. Some can be accessed in the "Run.scd" file, while all are accessible from the "Variables.scd" file
+
+<h3>Acknowledgments:</h3>
+
+Queer Sonic Fingerprint premiered at Art Laboratory Berlin (https://artlaboratory-berlin.org/de/), to which we want to extend our deepest gratitude for supporting the project.
+
+The development of the code base for Queer Sonic Fingerprint has been generously supported by Koda Kultur and Dansk Komponistforening. Some of the code was developed by a residency at Sound Art Lab (https://soundartlab.org/) and at a visiting guest artist fellowship at The Speculative Sound Synthesis Project at the the Institute of Electronic Music and Acoustics (IEM) at the University of Music and Performing Arts Graz (https://speculativesoundsynthesis.iem.sh/ ).
