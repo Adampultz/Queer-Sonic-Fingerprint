@@ -674,7 +674,7 @@ SynthDef(\rec,
 	var size = buffers.size;
 	var scrambleArray = Array.fill(size, {|i| i}).scramble;
 	scrambleArray.do({|i|
-		var waitTime = (1.0 / size).rrand(maxWait).pow(2).clip(0.1, maxWait.pow(2)) * ~numspeakerSqrt;
+		var waitTime = (1.0 / size).rrand(maxWait).pow(2).clip(0.1, maxWait.pow(2)) * ~numspeakerSqrt * ~pbSpeedBus.getSynchronous;
 		// var waitTime = (1.0 / size).rrand(maxWait).pow(2);
 		var pan = (0.5.rand - 0.25) + (0.5 * index);
 		var buffer = buffers[i];
@@ -732,7 +732,7 @@ SynthDef(\speechConvolve,
 			clampTime:  0.02,
 			relaxTime:  0.1);
 		out = Limiter.ar(out, 0.9);
-		outMixer = PanX.ar(~numEnvironments, out * (1 - select) * In.kr(ampBus), Select.kr(1, [ DC.kr(pan), Wrap.kr(SinOsc.kr(In.kr(~convPanBus), pi / 2, 0.5, 0.5) + pan) ]));
+		outMixer = PanX.ar(~numEnvironments, out * (1 - select) * In.kr(ampBus), Select.kr(1, [ DC.kr(pan), Wrap.kr(Phasor.kr(0, (60 / SampleRate.ir) * In.kr(~convPanBus)) + pan)]));
 		outTransducer = Pan2.ar(out * select, transPan);
 		Out.ar(mixerBus, outMixer * env);
 		Out.ar(transducerBus, outTransducer * env);
@@ -751,7 +751,9 @@ SynthDef(\sensor1, {
 	Out.kr(~feedbackAMfreq[1], LinExp.kr(~gyroBus[1][1].kr, 0.0, 1.0, 0.01, 200))}).add;
 
 SynthDef(\sensor2, {
-	Out.kr(~feedbackAMfreq[2], LinExp.kr(~gyroBus[2][1].kr, 0.0, 1.0, 0.01, 200))}).add;
+	Out.kr(~feedbackAMfreq[2], LinExp.kr(~gyroBus[2][1].kr, 0.0, 1.0, 0.01, 200));
+	Out.kr(~pbSpeedBus,  LinLin.kr((Clip.kr(~gyroBus[2][1].kr).squared + 1), 1.0, 2.0, 0.7, 2.0))};
+).add;
 
 SynthDef(\sensor3, {
 	Out.kr(~feedbackAMfreq[3], LinExp.kr(~gyroBus[3][1].kr, 0.0, 1.0, 0.01, 200))}).add;
