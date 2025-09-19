@@ -234,7 +234,7 @@
 			"Life cycle: %".format(lifeCycle).postln;
 			"Age Size: %".format(age.size).postln;*/
 
-			distanceBelow = ~distanceBelow.(spectralCentroidGeno); // Measure how far below the spectral centroid of each individual is to the mean spectral centroid
+			distanceBelow = ~distanceBelow.(spectralCentroidGeno) * ~distanceModerator; // Measure how far below the spectral centroid of each individual is to the mean spectral centroid
 
 			// Deviation, spectral centroid, and standard deviation (SD)
 
