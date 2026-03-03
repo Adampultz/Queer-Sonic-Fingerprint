@@ -1,5 +1,7 @@
 ~visuals = false; // For multiplying the complex spectrum of individuals
 
+~sensors = false;
+
 ~multiplyOn = true; // For multiplying the complex spectrum of individuals
 
 ~mutationOn = true;
@@ -14,6 +16,8 @@
 
 ~parentFrac = 0.5; // Fraction of adults to become parents
 
+~feed_back_prob = 0.5;
+
 ~envInsert = true; // For inserting a snippet of the environment into the genome of an individual
 ~envInsertProb = 0.2;
 
@@ -25,6 +29,7 @@
 
 ~ancestorReturn = true;
 ~ancestorReturnProb = 0.07;
+
 // Fitness Variables. For balancing the parameters contributing to calculating the fitness function
 ~slicepointCoeff = 0; // Biases toward shorter attcack
 ~specCentDevGenoCoeff = 1.0; // The deviation of the spectral centroid, calculated from the genome
@@ -45,20 +50,14 @@
 
 ~deathProb = 0.5;
 
+~feedbackl_start_gen = 5;
+
 ~ancestralMemory = 4; // How many generations (as audio buffers) are stored
 ~sigBufRedundancy = 4; // For storing and freeing ir buffers
 ~genCounter = 0;
 ~numPop = 4;
 ~cycleGenInd = 0;
 ~convolveFftsize = 2048;
-
-~toBlackhole = 16;
-
-~mainOut = 0;
-
-~micInMono = 0;
-
-~micInStereo = [0, 1];
 
 ~bufPlayMaxWaitTime = 1.7;
 
@@ -78,11 +77,9 @@
 
 ~conversationIsPlaying = false;
 
-~conversationProb = 1;
+~conversationProb = 0.7;
 
 ~speechCompressThresh = 0.01;
-
-~numExciters = 2;
 
 ~exciterOut = ~numEnvironments;
 
@@ -92,11 +89,5 @@
 
 ~udpPort = 3334;
 
-~feedback = true;
-
 ~oscMinMaxTrace = true;
 
-
-
-
-s.latency = 0.1;
