@@ -15,6 +15,8 @@
 
 ~feedbackSensorAmp = ~numSensors.collect{|i| Bus.control(s).set(1)};
 
+~feedBackDisable = Bus.control(s).set(0);
+
 ~conversationVolume = Bus.control(s);
 
 ~conversationConvMix = Bus.control(s).set(0);
