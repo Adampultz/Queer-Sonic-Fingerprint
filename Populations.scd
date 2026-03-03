@@ -19,7 +19,7 @@
 	s.sync;
 
 	if (~feedback, {
-	convolveSpectrum = ~prepConvolve.(initConvolveBuf, ~convolveFftsize).normalize;
+		convolveSpectrum = ~prepConvolve.(initConvolveBuf, ~convolveFftsize).normalize;
 	});
 
 	s.sync;
@@ -29,7 +29,7 @@
 	s.sync;
 
 	if (~feedback, {
-	feedbackSynths[0] = Synth(\feedBack, [\irBuffer, convolveSpectrum.bufnum, \fftSize, ~convolveFftsize, \feedbackVol, ~feedbackVol[popIndex], \convolveMix, ~convolveMix[popIndex], \micChan, popIndex, \thresHoldBus, ~feedbackThreshBus, \pan, ((1 / ~numEnvironments) * popIndex), \amBus, ~feedbackAMfreq[popIndex], \sensorAmp, ~feedbackSensorAmp[popIndex]], target: ~convolveGrp);
+		feedbackSynths[0] = Synth(\feedBack, [\irBuffer, convolveSpectrum.bufnum, \fftSize, ~convolveFftsize, \feedbackVol, ~feedbackVol[popIndex], \convolveMix, ~convolveMix[popIndex], \micChan, popIndex + ~micInMono, \thresHoldBus, ~feedbackThreshBus, \pan, ((1 / ~numEnvironments) * popIndex), \amBus, ~feedbackAMfreq[popIndex], \sensorAmp, ~feedbackSensorAmp[popIndex], \disable, ~feedBackDisable], target: ~convolveGrp);
 	});
 
 	s.sync;
@@ -54,7 +54,7 @@
 		x = case
 		{val < ~adultAge} {lifeCycle[i] = 0}
 		{(val >= ~adultAge) && (val < ~retirementAge)} {lifeCycle[i] = 1}
-		{val >= ~retirementAge} {lifeCycle[2] = 2};
+		{val >= ~retirementAge} {lifeCycle[i] = 2};
 	};
 
 
@@ -95,7 +95,6 @@
 
 
 			// Identify slice points for measuring spectral centroid
-			// slice = ~ampSlice.(newBufs[cycleGenInd][i]);
 			slice = newBufs[cycleGenInd][i].ampSlice(s, windowSize: 2048);
 
 			// Store slicepoints for use in real-time centroid detection
@@ -189,7 +188,7 @@
 			};
 
 			if (~postInfo[popIndex], {
-				"Population %, number of Ghosts: %".format([popIndex, ghostsIR.size]).postln;});
+				"Population %, number of Ghosts: %".format([popIndex, ghostsIR.size]).postln});
 
 			if (~numEnvironments > 1, {
 				if (popIndex != (~numEnvironments - 1), {
@@ -202,6 +201,7 @@
 							"New Population: %!".format(nextPopIndex).postln;
 
 							~populations.(nextPopIndex, ghostsIR ++ ~newSigs[0][~cutPoints[nextPopIndex]..(~cutPoints[nextPopIndex + 1] -1 )], ghostsFR ++ ~parentFreqResp.asList[~cutPoints[nextPopIndex]..(~cutPoints[nextPopIndex + 1] -1 )]);
+							~num_populations_playing = ~num_populations_playing + 1;
 							s.sync;
 							~tasks[nextPopIndex].start;
 							nextPop = 1;
@@ -241,7 +241,7 @@
 			/*			adultIndices = lifeCycle.indicesOfEqual(1);
 			"Adults: %".format(adultIndices).postln;*/
 
-			// "Stats".postln;
+			"Stats: %".format(spectralCentroidGeno.asArray.normalizeSum);
 			stats = ~stats.(spectralCentroidGeno.asArray.normalizeSum);
 
 			/*			"Stats: %".format(stats[0]).postln;
@@ -261,10 +261,13 @@
 			// Set children's fitness to 0 to avoid them entering the parent race
 			adultFitness = newGen[parentsGen].size.collect{|i|
 				if (lifeCycle[i] != 0, {
+					/*		"spectralCentroidDevPheno: %".format(spectralCentroidDevPheno.asArray.normalizeSum[i]).postln;
+					"Slice point Array: %".format(slicePointArray.asArray.normalizeSum[i]).postln;*/
 					((stats[0][i] * ~specCentDevGenoCoeff) + (spectralCentroidDevPheno.asArray.normalizeSum[i] * ~specCentDevPhenoCoeff) + ((1.0 / slicePointArray.asArray.normalizeSum[i]) * ~slicepointCoeff) + distanceBelow[i]);
 				}, {0})
 			};
 
+			// "AdultFitness: %".format(adultFitness).postln;
 			adultFitness = adultFitness.normalizeSum;
 
 			// "AdultFitness: %".format(adultFitness).postln;
@@ -339,7 +342,7 @@
 				};
 			});
 
-			if ( (newGen[parentsGen].size + numNewIndividuals) < (0.8 * ~maxNumIndividuals).asInteger, {
+			if ((newGen[parentsGen].size + numNewIndividuals) < (0.8 * ~maxNumIndividuals).asInteger, {
 
 				if (~multiplyOn == true, {
 					if (0.25.coin == true, {
@@ -388,7 +391,7 @@
 				};
 			});
 
-			if ( (newGen[parentsGen].size + numNewIndividuals) < (0.8 * ~maxNumIndividuals).asInteger, {
+			if ((newGen[parentsGen].size + numNewIndividuals) < (0.8 * ~maxNumIndividuals).asInteger, {
 
 				if (~ancestorReturn == true, {
 					if (genCounter >= ~adultAge, {
@@ -405,7 +408,7 @@
 
 			// Update already existing signals with mutations, etc.
 			modIDs.do{|i|
-				if (i < (newSigs.size - 1), {
+				if (i < (newSigs.size), {
 					newSigs[i] = ~newGeneration.(newGen[cycleGenInd][i], ~rfftParams[2], ~audioEnv, ~audioEnvelopeOn);
 				});
 			};
@@ -439,17 +442,11 @@
 			s.sync;
 
 			if (envRecOn.not, {
+
 				Routine{ 1.do {
-
-					// environment[0].free;
-
 					s.sync;
-
 					envRecOn = true;
-					// "Recording environment on".postln;
 					environment = ~recEnv.(envRecBuf, popOutputRecBuf, ~rfftParams[0], ~rfftParams[2], popIndex);
-					// (popOutputRecBuf.numFrames / s.sampleRate).wait;
-					// "Recording environment off".postln;
 
 					if (~envirIrOn, {
 						if (environment[0].numFrames == ~rfftParams[0], {
@@ -465,8 +462,6 @@
 
 									Synth(\simpleBufPlay, [\buf, environment[0], \ampBus, ~envirIrAmpBus[popIndex], \outBus, ~mixerBus, \panPos, pan], target: ~convolveGrp);
 									s.sync;
-
-									// 20.wait;
 
 									~roomIrPlaying = false;
 								});
@@ -522,46 +517,31 @@
 				s.sync;
 			};
 
+			// FEEDBACK
 			if (~feedback, {
-			if (genCounter > 5, {
-				if (1.0.coin, {
-					// "New convolution spectrum".postln;
+				if (genCounter > ~feedbackl_start_gen, { // Feedback only takes effect affter 5 generations
+					~feedBackDisable.set(1);
+					if (1.0.coin, { // Probability of change in feedback convolution buffer
+						var feedback_on;
 
-					/*			if (convolveBuf != nil, {
-					convolveBuf.free;
-					});*/
-
-
-
-			/*		if (environment[0] != nil, {
-						if (environment[0].numFrames == ~rfftParams[0], {
-							convolveBuf = [newBufs[cycleGenInd].choose, environment[0]].choose;
-						}, {convolveBuf = newBufs[cycleGenInd].choose});
-					}, {
-						convolveBuf = newBufs[cycleGenInd].choose});
-*/
 						convolveBuf = newBufs[cycleGenInd].choose;
 
 						s.sync;
 
-						// "Change feedback pop %".format(popIndex).postln;
-					// convolveBuf.postln;
+						"Change feedback pop: %".format(popIndex).postln;
+						"Convolution Buffer: %".format(convolveBuf).postln;
+						if ((~feed_back_prob / ~num_populations_playing).coin, {feedback_on = 1}, {feedback_on = 0});
 
-					pebble = ~xFadeFbConvolve.(convolveBuf, feedbackSynths, ~convolveFftsize, pebble, 2, popIndex, ~feedbackThreshBus[popIndex], ~numEnvironments);
+						pebble = ~xFadeFbConvolve.(convolveBuf, feedbackSynths, ~convolveFftsize, pebble, 2, popIndex, popIndex + ~micInMono, ~feedbackThreshBus[popIndex], ~feedBackDisable, ~numEnvironments, feedback_on = feedback_on);
+					});
 				});
-
-			});
 			});
 
 			s.sync;
-
-			// "Play new buffers".postln;
 
 			~playBufs.(popIndex, newBufs[cycleGenInd], slicePointArray, ~bufPlayMaxWaitTime, ~numEnvironments, ~conversationBuffers);
 
 			s.sync;
-
-			// "Get busses for generation %".format(popIndex).postln;
 
 			newBufs[cycleGenInd].size.do({|i|
 				if(i < spectralCentroidDevPheno.size, {
