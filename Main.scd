@@ -1,37 +1,15 @@
 s.options.memSize_(2.pow(20));
 s.options.sampleRate_(48000);
-s.options.numInputBusChannels_(6);
+s.options.numInputBusChannels_(12);
 s.options.numOutputBusChannels_(40);
 s.options.hardwareBufferSize = 512;
+s.options.recChannels_(4);
 s.options.maxSynthDefs = 2048;
 s.options.maxNodes = 2048;
 s.recHeaderFormat = "wav";
-s.options.numBuffers = 4096 * 2;
+s.options.numBuffers = 4096 * 3;
 
-s.options.outDevice_(
-	// "MacBook Pro Speakers"
-	// "External Headphones"
-	// "ZoomAudioD"
-	"Fireface UCX (23732049)"
-	// "Fireface + Blackhole"
-	// "Blackhole + Computer Audio"
-	// "Fireface + Zoom"
-	// "Zoom + Fireface"
-	// "Scarlett 2i2 USB"
-	//"Komplete Audio 6"
-);
-
-s.options.inDevice_(
-	// "MacBook Pro Microphone"
-	"Fireface UCX (23732049)"
-	// "ZoomAudioD"
-	// "Fireface + Blackhole"
-	// "Blackhole + Computer Audio"
-	// "Fireface + Zoom"
-	// "Zoom + Fireface"
-	// "Scarlett 2i2 USB"x
-	//"Komplete Audio 6"
-);
+"DeviceSetup.scd".loadRelative;
 
 ~nyquist = s.options.sampleRate / 2;
 
@@ -71,24 +49,25 @@ s.waitForBoot{
 			i[n] = ~accBus[k][n].getSynchronous;
 	}};
 
-	/*	~objPath = "/Users/adammac2023/Documents/Musik-business/Adam/2024/Speculative Sound Synthesis/Code_27.07.2024/Impulse_responses/";*/
-
-	~objPath = "/Users/adammac2023/Documents/Musik-business/Projects/Queer Sonic Fingerprint/Audio/Impulse_Responses/QSF_ALB/";
-
-	~museumPath = "/Users/adammac2023/Documents/Musik-business/Projects/Queer Sonic Fingerprint/Audio/Museum Audio/";
+	"Paths.scd".loadRelative;
 
 	~test = PathName(~objPath).files.do{|i|};
 
 	~numspeakerSqrt = ~numEnvironments.sqrt;
 
+	~num_populations_playing = 1;
+
 	"Initialising conversation buffers".postln;
 	~conversationBuffers = ~readFolderOfFolders.(~museumPath);
+	~conversationBuffers = ~conversationBuffers.flatten(1);
+	~conversationBufferWeights = Array.fill(~conversationBuffers.size, {1.0 / ~conversationBuffers.size});
+	~converSationBufferIndex = ~conversationBuffers.size.collect{|i| i};
 	s.sync;
 	"Conversation buffers initialised".postln;
 
 	~parentBuffers = ~test.size.collect{|i| Signal.read(~test[i].fullPath)};
 
-	~cutPoints = [0, 20, 28, 36, 44];
+	~cutPoints = [0, 20, 30, 40, 47];
 
 	~maximumSize = ~parentBuffers.maxCollectionSize;
 
@@ -110,23 +89,18 @@ s.waitForBoot{
 	~newSigs[0] = ~parentFreqResp.size.collect{|i| ~newGeneration.(~parentFreqResp[i], ~rfftParams[2], ~audioEnv)};
 
 	~newSigBufs = ~newSigs[0].size.collect{|i| Buffer.loadCollection(s, ~newSigs[0][i])};
-
-	// ~parentIRs = ~newSigBufs.deepCopy;
-
-	s.sync;
-
-	/*~convolveSpectrum = ~prepConvolve.(~newSigBufs.choose, ~convolveFftsize);
-	~convolveSpectrum = ~convolveSpectrum.normalize;*/
-
 	s.sync;
 
 	Synth(\mixer, [\amp, ~masterVol], target: ~mixerGrp);
 	Synth(\transducerMixer, [\amp, ~masterVol], target: ~mixerGrp);
 
+	if (~sensors, {
 	~synthSensor0 = Synth(\sensor0, target: ~envGrp);
 	~synthSensor1 = Synth(\sensor1, target: ~envGrp);
 	~synthSensor2 = Synth(\sensor2, target: ~envGrp);
 	~synthSensor3 = Synth(\sensor3, target: ~envGrp);
+	});
+
 	s.sync;
 
 	"Populations.scd".loadRelative;
@@ -146,14 +120,6 @@ s.waitForBoot{
 	~populations.(0, ~newSigs[0][~cutPoints[0]..(~cutPoints[1] -1 )], ~parentFreqResp.asList[~cutPoints[0]..(~cutPoints[1] -1 )]);
 	"One".postln;
 	s.sync;
-	/*	~populations.(1, ~newSigs[0], ~parentFreqResp.asList);
-	"Two".postln;
-	s.sync;
-	~populations.(2, ~newSigs[0], ~parentFreqResp.asList);
-	"Three".postln;
-	s.sync;
-	~populations.(3, ~newSigs[0], ~parentFreqResp.asList);
-	"Four".postln;*/
 
 	"Done".postln;
 };
